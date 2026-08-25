@@ -1,0 +1,411 @@
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap">
+<title>AI Field</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<!--
+  DIRECTION CONTRACT — The Field (visual reference for AI Field)
+  THESIS: One real assignment held in focus — not a dashboard of your progress. Refuses the LMS card-grid, the stats profile, and the ChatGPT-wrapper.
+  OWN-WORLD: Warm mineral-stone ground, near-black olive-slate ink, one petrol accent. Bricolage Grotesque display over Public Sans. Drafting-precise hairlines, sharp geometry (radius ≤3px), zero cards.
+  STORY: The operator sees their next rep, understands it was chosen for their weakest capability, senses a wider practice and an accumulating record, and begins.
+  FIRST VIEWPORT: Wordmark + "your practice" record opener across the top; below, the mission title breaking large and left-aligned with its recommendation-reason, premise, meta, and a petrol Begin; a hairline; two quiet available missions; a hairline; the five-capability register with the gap named in words.
+  FORM: Foreground Assignment / Peripheral World — user-pinned direction (ranked #1 of three explored; no seed key, direction pinned by user through the concept rounds).
+  FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
+-->
+<style>
+  :root{
+    --ground:#E7E6DF;
+    --raised:#F1EFE9;
+    --ink:#1B1C18;
+    --ink-2:#54554C;
+    --ink-3:#63635A;
+    --hairline:#D0CDC3;
+    --accent:#0E5C6A;
+    --accent-strong:#0A4A56;
+    --on-accent:#F1EFE9;
+    --sel-bg:rgba(14,92,106,.17);
+    --marker-open:#7C7B70;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#161715;
+      --raised:#1E201C;
+      --ink:#E9E7DE;
+      --ink-2:#A6A59B;
+      --ink-3:#8B8B80;
+      --hairline:#2C2E29;
+      --accent:#59BBC8;
+      --accent-strong:#7BCDD6;
+      --on-accent:#0A2429;
+      --sel-bg:rgba(89,187,200,.22);
+      --marker-open:#77776D;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#161715;
+    --raised:#1E201C;
+    --ink:#E9E7DE;
+    --ink-2:#A6A59B;
+    --ink-3:#8B8B80;
+    --hairline:#2C2E29;
+    --accent:#59BBC8;
+    --accent-strong:#7BCDD6;
+    --on-accent:#0A2429;
+    --sel-bg:rgba(89,187,200,.22);
+    --marker-open:#77776D;
+  }
+
+  *,*::before,*::after{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0;
+    background:var(--ground);
+    color:var(--ink);
+    font-family:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+    font-size:16px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    caret-color:var(--accent);
+    min-height:100vh;
+  }
+  ::selection{background:var(--sel-bg);}
+  a{color:inherit;}
+  .num{font-variant-numeric:tabular-nums;}
+
+  :focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:2px;}
+  *{scrollbar-color:var(--ink-3) transparent;}
+  ::-webkit-scrollbar{width:11px;height:11px;}
+  ::-webkit-scrollbar-thumb{background:var(--hairline);border-radius:0;border:3px solid var(--ground);}
+  ::-webkit-scrollbar-track{background:transparent;}
+
+  .field{
+    max-width:1000px;
+    margin-inline:auto;
+    padding:clamp(1.5rem,4.5vw,3.75rem) clamp(1.25rem,5vw,3.25rem) 4rem;
+  }
+
+  /* ---- top ---- */
+  .field__top{
+    display:flex;justify-content:space-between;align-items:baseline;
+    gap:1rem 1.5rem;flex-wrap:wrap;
+  }
+  .wordmark{
+    font-family:"Public Sans",sans-serif;
+    font-weight:600;font-size:.82rem;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--ink);
+  }
+  .record{
+    appearance:none;border:0;background:none;cursor:pointer;padding:.35em 0;
+    font:inherit;font-size:.82rem;font-weight:500;color:var(--ink-2);
+    display:inline-flex;align-items:center;gap:.5ch;
+    border-bottom:1px solid transparent;transition:color .18s ease,border-color .18s ease;
+  }
+  .record:hover{color:var(--ink);border-bottom-color:var(--hairline);}
+  .record .chev{width:7px;height:11px;transition:transform .2s ease;}
+  .record[aria-expanded="true"] .chev{transform:rotate(90deg);}
+  .record__panel{
+    margin-top:1rem;padding:.85rem 1rem;background:var(--raised);
+    border:1px solid var(--hairline);border-radius:2px;
+    font-size:.9rem;color:var(--ink-2);
+  }
+  .record__panel b{color:var(--ink);font-weight:600;}
+
+  /* ---- figure (the one next rep) ---- */
+  .figure{
+    margin-top:clamp(3rem,9vw,6.5rem);
+    max-width:40ch;
+    animation:riseIn .72s cubic-bezier(.16,1,.3,1) both;
+  }
+  @keyframes riseIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+  .figure__title{
+    margin:0;
+    font-family:"Bricolage Grotesque","Public Sans",sans-serif;
+    font-weight:700;
+    font-size:clamp(2.7rem,8.5vw,5rem);
+    line-height:.98;letter-spacing:-.03em;
+    text-wrap:balance;color:var(--ink);
+  }
+  .figure__why{
+    margin:1.35rem 0 0;
+    font-size:clamp(1.05rem,2.4vw,1.2rem);font-weight:500;line-height:1.45;
+    color:var(--ink);max-width:34ch;
+  }
+  .figure__why .hl{color:var(--accent);font-weight:600;}
+  .figure__premise{
+    margin:.5rem 0 0;
+    font-size:clamp(1.02rem,2.2vw,1.12rem);color:var(--ink-2);line-height:1.5;
+    max-width:36ch;
+  }
+  .figure__meta{
+    margin:1.4rem 0 0;
+    font-size:.76rem;font-weight:600;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--ink-3);display:flex;gap:.75ch;align-items:center;flex-wrap:wrap;
+  }
+  .figure__meta .dot{width:3px;height:3px;border-radius:50%;background:var(--ink-3);display:inline-block;}
+
+  .begin{
+    appearance:none;cursor:pointer;font:inherit;
+    display:inline-flex;align-items:center;gap:.7ch;
+    margin-top:1.9rem;
+    padding:.9em 1.5em;border:0;border-radius:2px;
+    background:var(--accent);color:var(--on-accent);
+    font-weight:600;font-size:.98rem;letter-spacing:.005em;
+    transition:background .18s ease;
+  }
+  .begin:hover{background:var(--accent-strong);}
+  .begin .arr{width:17px;height:12px;transition:transform .22s cubic-bezier(.16,1,.3,1);}
+  .begin:hover .arr{transform:translateX(4px);}
+
+  /* ---- rules ---- */
+  .rule{border:0;border-top:1px solid var(--hairline);margin:clamp(2.75rem,6vw,4.25rem) 0;}
+
+  .section-label{
+    margin:0 0 1.25rem;
+    font-size:.72rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--ink-3);
+  }
+
+  /* ---- the rest of your practice ---- */
+  .missions{list-style:none;margin:0;padding:0;}
+  .missions li{border-top:1px solid var(--hairline);}
+  .missions li:last-child{border-bottom:1px solid var(--hairline);}
+  .mission{
+    appearance:none;border:0;background:none;cursor:pointer;width:100%;text-align:left;
+    font:inherit;color:inherit;
+    display:flex;align-items:baseline;justify-content:space-between;gap:1.5rem;
+    padding:1.15rem .25rem;transition:transform .22s ease;
+  }
+  .mission:hover,.mission[aria-expanded="true"]{transform:translateX(6px);}
+  .mission__head{display:flex;align-items:baseline;gap:1.1rem;flex-wrap:wrap;min-width:0;flex:1 1 auto;}
+  .mission__title{
+    font-family:"Bricolage Grotesque","Public Sans",sans-serif;
+    font-weight:600;font-size:1.2rem;letter-spacing:-.01em;color:var(--ink);
+    transition:color .18s ease;white-space:nowrap;
+  }
+  .mission:hover .mission__title{color:var(--accent);}
+  .mission__premise{font-size:.95rem;color:var(--ink-2);}
+  .mission__chev{width:9px;height:14px;flex:none;color:var(--ink-3);transition:transform .22s ease;align-self:center;}
+  .mission[aria-expanded="true"] .mission__chev{transform:rotate(90deg);color:var(--ink);}
+
+  .mission__detail{
+    overflow:hidden;
+    display:grid;grid-template-rows:0fr;opacity:0;
+    transition:grid-template-rows .28s cubic-bezier(.16,1,.3,1),opacity .22s ease;
+  }
+  .mission__detail>div{min-height:0;padding:0 .25rem;}
+  .mission[aria-expanded="true"]+.mission__detail{grid-template-rows:1fr;opacity:1;padding-bottom:1.35rem;}
+  .mission__meta{
+    margin:0 0 1rem;font-size:.74rem;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);
+  }
+  .begin--ghost{
+    background:transparent;color:var(--accent);
+    border:1px solid var(--accent);padding:.62em 1.15em;font-size:.9rem;margin-top:0;
+  }
+  .begin--ghost:hover{background:var(--accent);color:var(--on-accent);}
+  .mission__note{margin:.95rem 0 0;font-size:.85rem;color:var(--ink-2);}
+  .mission__note b{color:var(--ink);font-weight:600;}
+
+  /* not-yet-relevant mission */
+  .mission--later .mission__title{color:var(--ink-2);}
+  .mission--later:hover .mission__title{color:var(--ink);}
+  .mission__tag{
+    font-size:.68rem;font-weight:600;letter-spacing:.11em;text-transform:uppercase;
+    color:var(--ink-3);white-space:nowrap;flex:none;align-self:center;
+  }
+  .mission__reason{margin:0;font-size:.9rem;color:var(--ink-2);max-width:52ch;}
+  .mission__reason b{color:var(--ink);font-weight:600;}
+
+  .seeall{
+    appearance:none;border:0;background:none;cursor:pointer;font:inherit;
+    margin-top:1.4rem;padding:.4em 0;
+    font-size:.82rem;font-weight:600;letter-spacing:.02em;color:var(--ink-3);
+    display:inline-flex;align-items:center;gap:.6ch;transition:color .18s ease;
+  }
+  .seeall:hover{color:var(--accent);}
+  .seeall .arr{width:15px;height:11px;transition:transform .22s ease;}
+  .seeall:hover .arr{transform:translateX(3px);}
+
+  /* ---- capability register ---- */
+  .caps{
+    list-style:none;margin:0;padding:0;
+    display:grid;grid-template-columns:repeat(5,1fr);gap:1px;
+    background:var(--hairline);border:1px solid var(--hairline);border-radius:2px;overflow:hidden;
+  }
+  .caps>li{display:flex;}
+  .cap{
+    appearance:none;border:0;cursor:pointer;width:100%;text-align:left;font:inherit;color:inherit;
+    background:var(--ground);flex:1 1 auto;
+    display:flex;flex-direction:column;gap:.55rem;
+    padding:1.1rem 1.05rem 1.15rem;
+    transition:background .16s ease;
+  }
+  .cap:hover,.cap[aria-current="true"]{background:var(--raised);}
+  .cap__top{display:flex;align-items:center;gap:.6ch;}
+  .cap__marker{width:9px;height:9px;border-radius:50%;flex:none;}
+  .cap__marker--filled{background:var(--ink);}
+  .cap__marker--open{background:transparent;box-shadow:inset 0 0 0 1.5px var(--marker-open);}
+  .cap__name{
+    font-size:.74rem;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink);
+  }
+  .cap__state{font-size:.82rem;color:var(--ink-3);line-height:1.35;}
+  .cap__gap{color:var(--accent);font-weight:600;}
+  .cap__evidence{
+    margin:1.05rem 0 0;padding:.9rem 1.05rem;
+    background:var(--raised);border:1px solid var(--hairline);border-radius:2px;
+    font-size:.9rem;color:var(--ink-2);max-width:60ch;
+  }
+  .cap__evidence b{color:var(--ink);font-weight:600;}
+  [hidden]{display:none !important;}
+
+  /* ---- responsive ---- */
+  @media (max-width:820px){
+    .caps{grid-template-columns:repeat(2,1fr);}
+    .caps li:last-child{grid-column:1 / -1;}
+  }
+  @media (max-width:540px){
+    .caps{grid-template-columns:1fr;}
+    .caps li:last-child{grid-column:auto;}
+    .cap{flex-direction:row;align-items:baseline;justify-content:space-between;gap:1rem;padding:.95rem 1rem;}
+    .cap__top{gap:.55ch;}
+    .cap__state{text-align:right;flex:none;}
+    .mission{flex-direction:row;align-items:center;}
+    .mission__head{flex-direction:column;gap:.2rem;}
+    .mission__title{white-space:normal;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .figure{animation:none;}
+    *,*::before,*::after{transition-duration:.001ms !important;}
+    .mission__detail{transition:none;}
+  }
+</style>
+
+<main class="field">
+  <header class="field__top">
+    <div class="wordmark">AI&nbsp;Field</div>
+    <button class="record" type="button" aria-expanded="false" aria-controls="record-panel">
+      your practice &mdash; <span class="num">&nbsp;1</span>&nbsp;rep worked
+      <svg class="chev" viewBox="0 0 7 11" fill="none" aria-hidden="true"><path d="M1 1l4.5 4.5L1 10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </header>
+  <div class="record__panel" id="record-panel" hidden>
+    <b>Meeting Chaos</b> — showed Context, Direction and Synthesis. Your record begins here and grows one worked rep at a time.
+  </div>
+
+  <section class="figure" aria-label="Your next rep">
+    <h1 class="figure__title">Don&rsquo;t&nbsp;Trust the&nbsp;AI</h1>
+    <p class="figure__why">Recommended because your <span class="hl">Verification</span> is still unexplored.</p>
+    <p class="figure__premise">Catch what the AI gets wrong before you rely on it.</p>
+    <p class="figure__meta"><span class="num">~10</span>&nbsp;min <span class="dot"></span> builds Verification</p>
+    <button class="begin" type="button">
+      Begin
+      <svg class="arr" viewBox="0 0 17 12" fill="none" aria-hidden="true"><path d="M1 6h14M11 1.5L15.5 6 11 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </section>
+
+  <hr class="rule">
+
+  <section class="rest" aria-label="Other missions available to you">
+    <h2 class="section-label">The rest of your practice</h2>
+    <ul class="missions">
+      <li>
+        <button class="mission" type="button" aria-expanded="false" aria-controls="m-bad">
+          <span class="mission__head">
+            <span class="mission__title">The Bad Prompt</span>
+            <span class="mission__premise">Rewrite a weak prompt into one that actually works.</span>
+          </span>
+          <svg class="mission__chev" viewBox="0 0 9 14" fill="none" aria-hidden="true"><path d="M1.5 1l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="mission__detail" id="m-bad"><div>
+          <p class="mission__meta"><span class="num">~10</span>&nbsp;min &nbsp;&middot;&nbsp; builds Iteration &middot; Direction</p>
+          <button class="begin begin--ghost" type="button">Begin this instead
+            <svg class="arr" viewBox="0 0 17 12" fill="none" aria-hidden="true"><path d="M1 6h14M11 1.5L15.5 6 11 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <p class="mission__note">Your recommendation is still <b>Don&rsquo;t Trust the AI</b>.</p>
+        </div></div>
+      </li>
+      <li>
+        <button class="mission mission--later" type="button" aria-expanded="false" aria-controls="m-brief">
+          <span class="mission__head">
+            <span class="mission__title">The Brief</span>
+            <span class="mission__premise">Turn a vague ask into a brief the AI can execute.</span>
+          </span>
+          <span class="mission__tag">not yet relevant</span>
+          <svg class="mission__chev" viewBox="0 0 9 14" fill="none" aria-hidden="true"><path d="M1.5 1l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="mission__detail" id="m-brief"><div>
+          <p class="mission__reason">This surfaces when it becomes your most useful next rep. Right now that&rsquo;s <b>Don&rsquo;t Trust the AI</b> &mdash; it closes your Verification gap first.</p>
+        </div></div>
+      </li>
+    </ul>
+    <button class="seeall" type="button">See all missions
+      <svg class="arr" viewBox="0 0 15 11" fill="none" aria-hidden="true"><path d="M1 5.5h12M9.5 1.5L13 5.5 9.5 9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </section>
+
+  <hr class="rule">
+
+  <section class="register" aria-label="Your five capabilities">
+    <h2 class="section-label">Where your practice stands</h2>
+    <ul class="caps">
+      <li><button class="cap" type="button" data-ev="ev-context">
+        <span class="cap__top"><span class="cap__marker cap__marker--filled"></span><span class="cap__name">Context</span></span>
+        <span class="cap__state">shown once</span>
+      </button></li>
+      <li><button class="cap" type="button" data-ev="ev-direction">
+        <span class="cap__top"><span class="cap__marker cap__marker--filled"></span><span class="cap__name">Direction</span></span>
+        <span class="cap__state">shown once</span>
+      </button></li>
+      <li><button class="cap" type="button" data-ev="ev-iteration">
+        <span class="cap__top"><span class="cap__marker cap__marker--open"></span><span class="cap__name">Iteration</span></span>
+        <span class="cap__state">not yet worked</span>
+      </button></li>
+      <li><button class="cap" type="button" data-ev="ev-verification">
+        <span class="cap__top"><span class="cap__marker cap__marker--open"></span><span class="cap__name">Verification</span></span>
+        <span class="cap__state">not yet worked <span class="cap__gap">&middot; your gap</span></span>
+      </button></li>
+      <li><button class="cap" type="button" data-ev="ev-synthesis">
+        <span class="cap__top"><span class="cap__marker cap__marker--filled"></span><span class="cap__name">Synthesis</span></span>
+        <span class="cap__state">shown once</span>
+      </button></li>
+    </ul>
+    <p class="cap__evidence" id="cap-evidence" aria-live="polite" hidden></p>
+  </section>
+</main>
+
+<script>
+  (function(){
+    // Generic disclosure (record opener + mission rows)
+    document.querySelectorAll('[aria-controls]').forEach(function(btn){
+      if(btn.classList.contains('cap')) return;
+      btn.addEventListener('click', function(){
+        var panel = document.getElementById(btn.getAttribute('aria-controls'));
+        var open = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', String(!open));
+        if(panel && panel.classList.contains('record__panel')) panel.hidden = open;
+      });
+    });
+
+    // Capability inspect -> shared evidence line
+    var evidence = {
+      'ev-context':    'Shown in <b>Meeting Chaos</b> — you gave the AI the raw notes it needed to work from.',
+      'ev-direction':  'Shown in <b>Meeting Chaos</b> — you set the output: decisions, owners and due dates.',
+      'ev-iteration':  'Not yet worked — you&rsquo;ll show this when a mission calls for pushing past the first answer.',
+      'ev-verification':'Not yet worked — your current gap. <b>Don&rsquo;t Trust the AI</b> is built to draw it out.',
+      'ev-synthesis':  'Shown in <b>Meeting Chaos</b> — you turned a messy transcript into a summary you could send.'
+    };
+    var evEl = document.getElementById('cap-evidence');
+    var caps = document.querySelectorAll('.cap');
+    caps.forEach(function(cap){
+      cap.addEventListener('click', function(){
+        var key = cap.getAttribute('data-ev');
+        var already = cap.getAttribute('aria-current') === 'true';
+        caps.forEach(function(c){c.removeAttribute('aria-current');});
+        if(already){ evEl.hidden = true; return; }
+        cap.setAttribute('aria-current','true');
+        evEl.innerHTML = evidence[key] || '';
+        evEl.hidden = false;
+      });
+    });
+  })();
+</script>
