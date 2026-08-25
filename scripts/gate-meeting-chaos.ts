@@ -4,10 +4,11 @@
 // This is the go/no-go: a pipeline that cannot discriminate does not pass.
 // Run: npx tsx scripts/gate-meeting-chaos.ts
 import { readFileSync } from "node:fs";
-import { GoogleGenAI } from "@google/genai";
+import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { buildJudgePrompt, weightedCompetencies } from "../lib/judge/prompt";
 import type { JudgeInput } from "../lib/judge/prompt";
-import { JUDGE_SCHEMA } from "../lib/judge/schema";
+import { JudgeOutputSchema } from "../lib/judge/schema";
 import { updateProfile } from "../lib/progression/update";
 import { FRESH_PROFILE, scoreToBand, COMPETENCY_ORDER } from "../lib/competencies";
 import { meetingChaos } from "../lib/missions/meeting-chaos";
@@ -18,28 +19,36 @@ for (const line of readFileSync(".env.local", "utf8").split("\n")) {
   if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-const MODEL = process.env.GEMINI_MODEL!;
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 const RAW_NOTES = meetingChaos.resources.find((r) => r.id === "raw-notes")!.content;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Mirrors lib/ai/provider.ts runJudge (the gate can't import the server-only
+// provider module, so it calls the SDK the same way).
 async function judge(label: string, input: JudgeInput): Promise<JudgeOutput> {
   const prompt = buildJudgePrompt(input);
   let lastErr: unknown;
-  const MAX = 12;
+  const MAX = 8;
   for (let attempt = 0; attempt < MAX; attempt++) {
     try {
-      const r = await ai.models.generateContent({
+      const r = await anthropic.messages.parse({
         model: MODEL,
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: { responseMimeType: "application/json", responseSchema: JUDGE_SCHEMA },
+        max_tokens: 16000,
+        output_config: {
+          effort: "high",
+          format: zodOutputFormat(JudgeOutputSchema),
+        },
+        messages: [{ role: "user", content: prompt }],
       });
-      return JSON.parse(r.text!) as JudgeOutput;
+      if (!r.parsed_output) throw new Error("judge output did not match schema");
+      return r.parsed_output as JudgeOutput;
     } catch (e) {
       lastErr = e;
       const msg = String((e as { message?: string })?.message || e);
-      if (/503|UNAVAILABLE|overloaded|high demand|429|RESOURCE_EXHAUSTED|500|INTERNAL/i.test(msg)) {
+      const status = (e as { status?: number })?.status;
+      if (status === 429 || status === 529 || (status && status >= 500) || /overloaded|rate.?limit/i.test(msg)) {
         const wait = Math.min(30000, 3000 * (attempt + 1)) + Math.floor(Math.random() * 1500);
         console.log(`  [${label}] transient (${msg.slice(0, 48)}…) — retry ${attempt + 1}/${MAX} in ${wait}ms`);
         await sleep(wait);

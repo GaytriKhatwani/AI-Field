@@ -155,7 +155,7 @@ export async function POST(req: Request) {
   }
   for (const m of prior ?? []) {
     history.push({
-      role: m.role === "user" ? "user" : "model",
+      role: m.role === "user" ? "user" : "assistant",
       text: m.content as string,
     });
   }
