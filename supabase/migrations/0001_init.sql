@@ -292,3 +292,16 @@ begin
 
   return v_count <= p_limit;
 end $$;
+
+-- ============================================================================
+-- Grants. RLS decides WHICH rows a request may touch; these table/function
+-- grants decide that the role may touch them at all. Anonymous users sign in and
+-- carry the 'authenticated' role (with is_anonymous = true), so we grant to it —
+-- never to 'anon' (truly unauthenticated), which keeps un-signed-in requests out.
+-- Tables created via raw SQL do not inherit Supabase's automatic grants, so these
+-- are explicit. RLS remains the actual per-row guard.
+-- ============================================================================
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
+grant execute on all functions in schema public to authenticated;
