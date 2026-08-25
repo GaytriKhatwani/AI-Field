@@ -6,3 +6,6 @@ next-env.d.ts
 .DS_Store
 .env*.local
 *.tsbuildinfo
+
+# transient local script output
+scripts/.gate-out.txt

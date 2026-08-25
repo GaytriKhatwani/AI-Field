@@ -4,13 +4,11 @@ import { useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getMission } from "@/lib/missions";
 import type { DeliverableField } from "@/lib/missions/types";
-import { useField } from "@/lib/store";
-import { respond, DeliverablePatch } from "@/lib/mock/ai";
-import type { SessionMessage } from "@/lib/mock/examiner";
 import { Arrow, Back, Check } from "@/components/icons";
 
 const HARD_CEILING = 12;
 
+type Msg = { id: string; role: "user" | "ai"; text: string };
 type Row = Record<string, string>;
 type Deliverable = {
   lists: Record<string, string[]>;
@@ -27,19 +25,31 @@ function emptyDeliverable(fields: DeliverableField[]): Deliverable {
   return { lists, tables };
 }
 
+function errorText(code: string | undefined): string {
+  switch (code) {
+    case "ceiling_reached":
+      return "[You've reached this attempt's exchange ceiling. Submit your deliverable when it's ready.]";
+    case "rate_limited":
+      return "[You're sending messages too quickly. Wait a moment and try again.]";
+    case "unauthenticated":
+      return "[Your session expired. Reload the page to continue.]";
+    default:
+      return "[The AI could not respond. Try again.]";
+  }
+}
+
 export default function Workbench() {
   const params = useParams<{ missionId: string }>();
   const router = useRouter();
-  const { submitAttempt } = useField();
   const mission = getMission(params.missionId);
 
+  const [attemptId, setAttemptId] = useState<string | null>(null);
   const [given, setGiven] = useState<string[]>([]);
   const [openResource, setOpenResource] = useState<string | null>(null);
-  const [messages, setMessages] = useState<SessionMessage[]>([]);
+  const [messages, setMessages] = useState<Msg[]>([]);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
-  const [lastExtract, setLastExtract] = useState<DeliverablePatch | null>(null);
-  const [pulledInto, setPulledInto] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
   const [mode, setMode] = useState<"instrument" | "deliverable">("deliverable");
   const [deliverable, setDeliverable] = useState<Deliverable>(() =>
     mission ? emptyDeliverable(mission.deliverable.fields) : { lists: {}, tables: {} },
@@ -69,61 +79,75 @@ export default function Workbench() {
     setGiven((g) => (g.includes(id) ? g : [...g, id]));
   }
 
-  function send() {
+  async function send() {
     const text = draft.trim();
     if (!text || thinking || atCeiling) return;
-    const userMsg: SessionMessage = { id: `msg_${++idRef.current}`, role: "user", text };
-    setMessages((m) => [...m, userMsg]);
+    const userMsg: Msg = { id: `u_${++idRef.current}`, role: "user", text };
+    const aiId = `a_${++idRef.current}`;
+    setMessages((m) => [...m, userMsg, { id: aiId, role: "ai", text: "" }]);
     setDraft("");
     setThinking(true);
-    window.setTimeout(() => {
-      const reply = respond(mission!, text, given);
-      setMessages((m) => [...m, { id: `msg_${++idRef.current}`, role: "ai", text: reply.text }]);
-      setLastExtract(reply.extract ?? null);
+
+    try {
+      const res = await fetch("/api/workbench", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          attemptId,
+          missionId: mission!.id,
+          message: text,
+          givenResourceIds: given,
+        }),
+      });
+
+      const hdr = res.headers.get("X-Attempt-Id");
+      if (hdr) setAttemptId((a) => a ?? hdr);
+
+      if (!res.ok || !res.body) {
+        const err = await res.json().catch(() => ({}));
+        setMessages((m) =>
+          m.map((x) => (x.id === aiId ? { ...x, text: errorText(err.error) } : x)),
+        );
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let acc = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        acc += decoder.decode(value, { stream: true });
+        setMessages((m) => m.map((x) => (x.id === aiId ? { ...x, text: acc } : x)));
+      }
+    } catch {
+      setMessages((m) =>
+        m.map((x) => (x.id === aiId ? { ...x, text: errorText(undefined) } : x)),
+      );
+    } finally {
       setThinking(false);
-    }, 720);
+    }
   }
 
-  function pullIn() {
-    if (!lastExtract) return;
-    const touched: string[] = [];
-    setDeliverable((d) => {
-      const next: Deliverable = {
-        lists: { ...d.lists },
-        tables: { ...d.tables },
-      };
-      if (lastExtract.lists) {
-        for (const [k, v] of Object.entries(lastExtract.lists)) {
-          if (next.lists[k] !== undefined) {
-            next.lists[k] = [...next.lists[k], ...v];
-            touched.push(k);
-          }
-        }
+  async function submit() {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attemptId, missionId: mission!.id, deliverable }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const id = data.attemptId ?? attemptId;
+      if (!id) {
+        setSubmitting(false);
+        return;
       }
-      if (lastExtract.tables) {
-        for (const [k, v] of Object.entries(lastExtract.tables)) {
-          if (next.tables[k] !== undefined) {
-            next.tables[k] = [...next.tables[k], ...v];
-            touched.push(k);
-          }
-        }
-      }
-      return next;
-    });
-    setPulledInto(touched);
-    window.setTimeout(() => setPulledInto([]), 1100);
-    setLastExtract(null);
-    setMode("deliverable");
-  }
-
-  function submit() {
-    submitAttempt({
-      mission: mission!,
-      givenResourceIds: given,
-      messages,
-      deliverable,
-    });
-    router.push("/evaluating");
+      router.push(`/evaluating?attemptId=${id}`);
+    } catch {
+      setSubmitting(false);
+    }
   }
 
   // ---- deliverable editors ----
@@ -200,12 +224,12 @@ export default function Workbench() {
         <button
           type="button"
           onClick={submit}
-          disabled={deliverableEmpty}
+          disabled={deliverableEmpty || submitting}
           className="btn flex-none"
           style={{ padding: "0.6em 1.2em", fontSize: "0.9rem" }}
           title={deliverableEmpty ? "Build your deliverable before submitting" : undefined}
         >
-          Submit mission
+          {submitting ? "Submitting…" : "Submit mission"}
           <Arrow className="arr" width={15} />
         </button>
       </header>
@@ -313,41 +337,29 @@ export default function Workbench() {
                     >
                       {m.role === "user" ? "You" : "AI"}
                     </span>
-                    <p className="mt-1 whitespace-pre-wrap text-[0.92rem] leading-relaxed text-ink">
-                      {m.text}
-                    </p>
+                    {m.text ? (
+                      <p className="mt-1 whitespace-pre-wrap text-[0.92rem] leading-relaxed text-ink">
+                        {m.text}
+                      </p>
+                    ) : (
+                      <p className="mt-1 flex gap-1.5">
+                        {[0, 1, 2].map((i) => (
+                          <span
+                            key={i}
+                            className="h-[6px] w-[6px] rounded-full bg-ink-3 animate-breathe"
+                            style={{ animationDelay: `${i * 0.18}s` }}
+                          />
+                        ))}
+                      </p>
+                    )}
                   </li>
                 ))}
-                {thinking && (
-                  <li>
-                    <span className="meta text-ink-3">AI</span>
-                    <p className="mt-1 flex gap-1.5">
-                      {[0, 1, 2].map((i) => (
-                        <span
-                          key={i}
-                          className="h-[6px] w-[6px] rounded-full bg-ink-3 animate-breathe"
-                          style={{ animationDelay: `${i * 0.18}s` }}
-                        />
-                      ))}
-                    </p>
-                  </li>
-                )}
               </ol>
             )}
           </div>
 
           {/* composer */}
           <div className="sticky bottom-0 mt-4 bg-ground pt-1">
-            {lastExtract && (
-              <button
-                type="button"
-                onClick={pullIn}
-                className="mb-2 inline-flex items-center gap-[0.6ch] text-[0.82rem] font-semibold text-accent transition-colors hover:text-accent-strong"
-              >
-                <Arrow width={14} style={{ transform: "rotate(180deg)" }} />
-                Pull the AI&rsquo;s last reply into your deliverable
-              </button>
-            )}
             <div className="flex items-end gap-2 rounded-sm border border-hairline bg-raised p-2 focus-within:border-accent">
               <textarea
                 value={draft}
@@ -401,43 +413,38 @@ export default function Workbench() {
           </div>
 
           <div className="space-y-8">
-            {spec.fields.map((f) => {
-              const washed = pulledInto.includes(f.id);
-              return (
-                <div
-                  key={f.id}
-                  className={`rounded-sm px-1 ${washed ? "animate-wash" : ""}`}
-                >
-                  <h3 className="section-label mb-3" style={{ color: "var(--ink-2)" }}>
-                    {f.label}
-                  </h3>
+            {spec.fields.map((f) => (
+              <div key={f.id} className="rounded-sm px-1">
+                <h3 className="section-label mb-3" style={{ color: "var(--ink-2)" }}>
+                  {f.label}
+                </h3>
 
-                  {f.kind === "list" ? (
-                    <ListEditor
-                      items={deliverable.lists[f.id] ?? []}
-                      placeholder={f.placeholder}
-                      onChange={(i, v) => updateListItem(f.id, i, v)}
-                      onAdd={() => addListItem(f.id)}
-                      onRemove={(i) => removeListItem(f.id, i)}
-                    />
-                  ) : (
-                    <TableEditor
-                      columns={f.columns}
-                      rows={deliverable.tables[f.id] ?? []}
-                      onChange={(i, c, v) => updateCell(f.id, i, c, v)}
-                      onAdd={() => addRow(f.id, f.columns.map((c) => c.id))}
-                      onRemove={(i) => removeRow(f.id, i)}
-                    />
-                  )}
-                </div>
-              );
-            })}
+                {f.kind === "list" ? (
+                  <ListEditor
+                    items={deliverable.lists[f.id] ?? []}
+                    placeholder={f.placeholder}
+                    onChange={(i, v) => updateListItem(f.id, i, v)}
+                    onAdd={() => addListItem(f.id)}
+                    onRemove={(i) => removeListItem(f.id, i)}
+                  />
+                ) : (
+                  <TableEditor
+                    columns={f.columns}
+                    rows={deliverable.tables[f.id] ?? []}
+                    onChange={(i, c, v) => updateCell(f.id, i, c, v)}
+                    onAdd={() => addRow(f.id, f.columns.map((c) => c.id))}
+                    onRemove={(i) => removeRow(f.id, i)}
+                  />
+                )}
+              </div>
+            ))}
           </div>
 
           {deliverableEmpty && (
             <p className="mt-8 max-w-[44ch] text-[0.9rem] leading-relaxed text-ink-3">
               This is what you&rsquo;ll hand in. Build it from the AI&rsquo;s
-              output — or type it yourself. You decide what&rsquo;s good enough.
+              output — read its replies and enter what&rsquo;s worth keeping. You
+              decide what&rsquo;s good enough.
             </p>
           )}
         </section>

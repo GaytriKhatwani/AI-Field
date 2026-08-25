@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient, requireUserId, UnauthenticatedError } from "@/lib/supabase/server";
+import { getMission, missionVersion } from "@/lib/missions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type Body = {
-  attemptId: string;
+  attemptId?: string;
+  missionId?: string;
   deliverable: {
     lists: Record<string, string[]>;
     tables: Record<string, Record<string, string>[]>;
@@ -27,13 +29,35 @@ export async function POST(req: Request) {
   }
 
   const body = (await req.json().catch(() => null)) as Body | null;
-  if (!body?.attemptId || !body?.deliverable)
-    return NextResponse.json({ error: "attemptId and deliverable required" }, { status: 400 });
+  if (!body?.deliverable)
+    return NextResponse.json({ error: "deliverable required" }, { status: 400 });
+
+  // Resolve the attempt: use the given one, or create it (covers a deliverable
+  // built without ever chatting to the AI — a fair, if empty, session to judge).
+  let attemptId = body.attemptId;
+  if (!attemptId) {
+    const mission = body.missionId ? getMission(body.missionId) : undefined;
+    if (!mission)
+      return NextResponse.json({ error: "attemptId or missionId required" }, { status: 400 });
+    const { data: created, error } = await supabase
+      .from("challenge_attempts")
+      .insert({
+        user_id: userId,
+        mission_id: mission.id,
+        mission_version: missionVersion(mission),
+        status: "in_progress",
+      })
+      .select("id")
+      .single();
+    if (error || !created)
+      return NextResponse.json({ error: "attempt_create_failed" }, { status: 500 });
+    attemptId = created.id as string;
+  }
 
   const { data: attempt } = await supabase
     .from("challenge_attempts")
     .select("id, status")
-    .eq("id", body.attemptId)
+    .eq("id", attemptId)
     .single();
   if (!attempt) return NextResponse.json({ error: "attempt_not_found" }, { status: 404 });
 
@@ -50,10 +74,10 @@ export async function POST(req: Request) {
       status: "submitted",
       updated_at: new Date().toISOString(),
     })
-    .eq("id", body.attemptId)
+    .eq("id", attemptId)
     .eq("user_id", userId)
     .eq("status", "in_progress");
   if (error) return NextResponse.json({ error: "submit_failed" }, { status: 500 });
 
-  return NextResponse.json({ status: "submitted", attemptId: body.attemptId });
+  return NextResponse.json({ status: "submitted", attemptId });
 }

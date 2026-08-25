@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useField } from "@/lib/store";
 
@@ -13,32 +13,112 @@ const READING = [
 
 export default function Evaluating() {
   const router = useRouter();
-  const { hydrated, lastDebrief } = useField();
+  const { hydrated, setLastDebrief, refresh } = useField();
   const [active, setActive] = useState(0);
+  const [errored, setErrored] = useState(false);
+  const started = useRef(false);
 
+  // Cycle the reading lines while the examiner works (purely visual).
   useEffect(() => {
-    if (!hydrated) return;
-    if (!lastDebrief) {
-      router.replace("/field");
-      return;
-    }
     const reduce =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-
     const step = window.setInterval(
-      () => setActive((a) => Math.min(a + 1, READING.length)),
-      reduce ? 120 : 620,
+      () => setActive((a) => (a + 1) % (READING.length + 1)),
+      reduce ? 400 : 900,
     );
-    const done = window.setTimeout(
-      () => router.replace("/debrief"),
-      reduce ? 400 : 2700,
-    );
+    return () => window.clearInterval(step);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || started.current) return;
+    started.current = true;
+
+    const attemptId = new URLSearchParams(window.location.search).get("attemptId");
+    if (!attemptId) {
+      router.replace("/field");
+      return;
+    }
+
+    let cancelled = false;
+    const MAX_POLLS = 40; // ~2 minutes at 3s
+
+    async function run() {
+      for (let i = 0; i < MAX_POLLS && !cancelled; i++) {
+        let res: Response;
+        try {
+          res = await fetch("/api/evaluate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ attemptId }),
+          });
+        } catch {
+          await sleep(3000);
+          continue;
+        }
+
+        if (res.status === 202) {
+          // Evaluation is in progress elsewhere — wait and poll again.
+          await sleep(3000);
+          continue;
+        }
+
+        if (!res.ok) {
+          if (!cancelled) setErrored(true);
+          return;
+        }
+
+        const data = await res.json().catch(() => null);
+        if (data?.debrief) {
+          setLastDebrief(data.debrief);
+          await refresh();
+          if (!cancelled) router.replace("/debrief");
+          return;
+        }
+        // Unexpected shape — brief wait then retry.
+        await sleep(3000);
+      }
+      if (!cancelled) setErrored(true);
+    }
+
+    run();
     return () => {
-      window.clearInterval(step);
-      window.clearTimeout(done);
+      cancelled = true;
     };
-  }, [hydrated, lastDebrief, router]);
+  }, [hydrated, router, setLastDebrief, refresh]);
+
+  if (errored) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-reading flex-col justify-center px-[clamp(1.25rem,5vw,3.25rem)] py-16">
+        <p className="section-label mb-5">The examiner hit a snag</p>
+        <h1 className="display max-w-[16ch] text-ink" style={{ fontSize: "clamp(1.9rem,5vw,2.8rem)" }}>
+          Grading didn&rsquo;t finish.
+        </h1>
+        <p className="mt-6 max-w-[40ch] text-[0.95rem] leading-relaxed text-ink-2">
+          Your session is saved. This is usually a temporary hiccup with the
+          examiner — try again in a moment.
+        </p>
+        <div className="mt-8 flex gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              started.current = false;
+              setErrored(false);
+              // re-trigger by reloading the same URL
+              router.refresh();
+              location.reload();
+            }}
+            className="btn"
+          >
+            Try grading again
+          </button>
+          <button type="button" onClick={() => router.push("/field")} className="btn--quiet">
+            Back to the Field
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto flex min-h-screen max-w-reading flex-col justify-center px-[clamp(1.25rem,5vw,3.25rem)] py-16">
@@ -85,4 +165,8 @@ export default function Evaluating() {
       </p>
     </main>
   );
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
