@@ -51,6 +51,23 @@
 - `lib/missions/` — `types.ts`, `meeting-chaos.ts` (fully authored), `catalog.ts` (missions 2–4, playable), `index.ts`. `lib/competencies.ts` — bands, marker/phrase states, gap. `lib/mock/` — `ai.ts` (literal-tool AI, includes the Sept-date trap) + `examiner.ts` (session-signal judge). `lib/store.tsx` — per-browser state (`localStorage` key `ai-field-state-v1`).
 - `components/` — `icons.tsx` (drawn SVGs), `CapabilityRegister.tsx` (register + `Marker`).
 
+## M1 DISCRIMINATION GATE — PASSED (2026-08-25)
+
+The hard go/no-go is cleared. The real judge (Claude **Sonnet 5**, effort high, Zod-constrained structured output) was run on a scripted STRONG vs WEAK Meeting Chaos transcript (`scripts/gate-meeting-chaos.ts`). All 9 assertions pass and the read is qualitatively honest, not just numerically divergent:
+
+| Competency | Strong | Weak |
+|---|---|---|
+| Context | 79 (proficient) | 23 (emerging) |
+| Direction | 79 (proficient) | 23 (emerging) |
+| Iteration | 31 (developing) | 0 (not shown) |
+| Verification | **strong band** (57) | 0 (not shown) |
+| Synthesis | 61 (proficient) | 0 (not shown) |
+| Next rep → | Iteration | **Verification** |
+
+The judge named the exact trap (weak attempt: "three invented due dates and one invented owner" reached the deliverable) and routed the weak next-rep to Verification, the strong next-rep to Iteration — matching the charter's Meeting Chaos loop. **This is the SPEC stop point: gate passed, do not build missions 2–4 or polish (M2/M3) without a fresh go-ahead.**
+
+**Provider:** switched Gemini → **Anthropic Claude Sonnet 5** for both roles (Gemini free tier capped at 20 req/day, which blocked the gate). Single provider, still behind the one `lib/ai/provider.ts` seam. Workbench = literal tool, effort low; Judge = rubric evaluator, effort high, Zod structured output. Rate limits / 12-msg ceiling / idempotency unchanged. Downgrading only the workbench to Haiku later is a one-line model change.
+
 ## Real backend build (M0 + backend half of M1) — 2026-08-25
 
 The **entire server side is now built and typechecks**; `npm run build` passes with 3 new dynamic API routes + middleware. The app **still runs end-to-end on the mock** (the backend is additive — no frontend cutover yet, so nothing regressed).
