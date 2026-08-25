@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getMission } from "@/lib/missions";
 import type { DeliverableField } from "@/lib/missions/types";
@@ -23,6 +23,22 @@ function emptyDeliverable(fields: DeliverableField[]): Deliverable {
     else tables[f.id] = [];
   }
   return { lists, tables };
+}
+
+// Strip a leading list marker ("1.", "2)", "-", "•", "*") the AI often prefixes
+// its lines with, so a captured phrase lands clean in the deliverable.
+function stripListMarker(text: string): string {
+  return text.replace(/^\s*(?:\d+[.)]|[-–—•*])\s+/, "").trim();
+}
+
+// A captured phrase is a single blob, but a table row has several columns. Land
+// it in the column that reads as the row's content (task / description / …)
+// rather than blindly in the first column (often an Owner/Who key), leaving the
+// structured cells for the operator to fill.
+function tableTargetColumn(columns: { id: string; label: string }[]): string {
+  const CONTENT = /task|desc|detail|item|note|summary|answer|content|what|text|question/i;
+  const match = columns.find((c) => CONTENT.test(c.id) || CONTENT.test(c.label));
+  return (match ?? columns[0]).id;
 }
 
 function errorText(code: string | undefined): string {
@@ -55,6 +71,26 @@ export default function Workbench() {
     mission ? emptyDeliverable(mission.deliverable.fields) : { lists: {}, tables: {} },
   );
   const idRef = useRef(0);
+  const [capture, setCapture] = useState<{ text: string; x: number; y: number } | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
+  const transcriptRef = useRef<HTMLOListElement>(null);
+  const fieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // clear the landing flash after it plays
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(null), 1100);
+    return () => clearTimeout(t);
+  }, [flash]);
+
+  // the capture toolbar is anchored to viewport coords — dismiss it if the
+  // layout shifts under it
+  useEffect(() => {
+    if (!capture) return;
+    const dismiss = () => setCapture(null);
+    window.addEventListener("resize", dismiss);
+    return () => window.removeEventListener("resize", dismiss);
+  }, [capture]);
 
   const userTurns = messages.filter((m) => m.role === "user").length;
   const atCeiling = userTurns >= HARD_CEILING;
@@ -148,6 +184,56 @@ export default function Workbench() {
     } catch {
       setSubmitting(false);
     }
+  }
+
+  // ---- select-to-capture: pull the AI's words into the deliverable ----
+  function readSelection() {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !transcriptRef.current) {
+      setCapture(null);
+      return;
+    }
+    const text = sel.toString().trim();
+    if (!text) {
+      setCapture(null);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const node = range.commonAncestorContainer;
+    const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element);
+    const aiMsg = el?.closest('[data-role="ai"]');
+    if (!aiMsg || !transcriptRef.current.contains(aiMsg)) {
+      setCapture(null);
+      return;
+    }
+    const rect = range.getBoundingClientRect();
+    setCapture({ text, x: rect.left + rect.width / 2, y: rect.top });
+  }
+
+  function captureInto(f: DeliverableField) {
+    if (!capture) return;
+    const text = stripListMarker(capture.text);
+    if (f.kind === "list") {
+      setDeliverable((d) => ({
+        ...d,
+        lists: { ...d.lists, [f.id]: [...d.lists[f.id], text] },
+      }));
+    } else {
+      const target = tableTargetColumn(f.columns);
+      const row = Object.fromEntries(
+        f.columns.map((c) => [c.id, c.id === target ? text : ""]),
+      );
+      setDeliverable((d) => ({
+        ...d,
+        tables: { ...d.tables, [f.id]: [...d.tables[f.id], row] },
+      }));
+    }
+    setCapture(null);
+    window.getSelection()?.removeAllRanges();
+    setFlash(f.id);
+    requestAnimationFrame(() =>
+      fieldRefs.current[f.id]?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+    );
   }
 
   // ---- deliverable editors ----
@@ -261,6 +347,7 @@ export default function Workbench() {
             mode === "instrument" ? "flex" : "hidden md:flex"
           }`}
           aria-label="Resources and the AI instrument"
+          onScroll={() => capture && setCapture(null)}
         >
           {/* resources */}
           <h2 className="section-label mb-4">Resources</h2>
@@ -326,9 +413,14 @@ export default function Workbench() {
                 request.
               </p>
             ) : (
-              <ol className="m-0 list-none space-y-4 p-0">
+              <ol
+                ref={transcriptRef}
+                onMouseUp={readSelection}
+                onKeyUp={readSelection}
+                className="m-0 list-none space-y-4 p-0"
+              >
                 {messages.map((m) => (
-                  <li key={m.id} className="animate-fadeUp">
+                  <li key={m.id} data-role={m.role} className="animate-fadeUp">
                     <span
                       className="meta"
                       style={{
@@ -414,7 +506,13 @@ export default function Workbench() {
 
           <div className="space-y-8">
             {spec.fields.map((f) => (
-              <div key={f.id} className="rounded-sm px-1">
+              <div
+                key={f.id}
+                ref={(el) => {
+                  fieldRefs.current[f.id] = el;
+                }}
+                className={`rounded-sm px-1 ${flash === f.id ? "animate-wash" : ""}`}
+              >
                 <h3 className="section-label mb-3" style={{ color: "var(--ink-2)" }}>
                   {f.label}
                 </h3>
@@ -442,13 +540,37 @@ export default function Workbench() {
 
           {deliverableEmpty && (
             <p className="mt-8 max-w-[44ch] text-[0.9rem] leading-relaxed text-ink-3">
-              This is what you&rsquo;ll hand in. Build it from the AI&rsquo;s
-              output — read its replies and enter what&rsquo;s worth keeping. You
-              decide what&rsquo;s good enough.
+              This is what you&rsquo;ll hand in. Select any part of the
+              AI&rsquo;s reply to add it to a section — or type directly. You
+              decide what&rsquo;s worth keeping.
             </p>
           )}
         </section>
       </div>
+
+      {/* select-to-capture toolbar — anchored above the AI-text selection */}
+      {capture && (
+        <div
+          role="menu"
+          aria-label="Add selection to your deliverable"
+          className="fixed z-50 flex items-center gap-0.5 rounded-sm border border-hairline bg-raised p-1 shadow-layer animate-fadeUp"
+          style={{ left: capture.x, top: capture.y - 10, transform: "translate(-50%, -100%)" }}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <span className="meta whitespace-nowrap px-1.5 text-ink-3">Add to</span>
+          {spec.fields.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              role="menuitem"
+              onClick={() => captureInto(f)}
+              className="whitespace-nowrap rounded-sm px-2 py-1 text-[0.8rem] font-semibold text-ink transition-colors hover:bg-accent hover:text-on-accent"
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
     </main>
   );
 }

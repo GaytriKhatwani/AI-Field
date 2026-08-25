@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useField } from "@/lib/store";
 
@@ -16,7 +16,6 @@ export default function Evaluating() {
   const { hydrated, setLastDebrief, refresh } = useField();
   const [active, setActive] = useState(0);
   const [errored, setErrored] = useState(false);
-  const started = useRef(false);
 
   // Cycle the reading lines while the examiner works (purely visual).
   useEffect(() => {
@@ -31,8 +30,7 @@ export default function Evaluating() {
   }, []);
 
   useEffect(() => {
-    if (!hydrated || started.current) return;
-    started.current = true;
+    if (!hydrated) return;
 
     const attemptId = new URLSearchParams(window.location.search).get("attemptId");
     if (!attemptId) {
@@ -40,6 +38,11 @@ export default function Evaluating() {
       return;
     }
 
+    // If this effect ever re-runs (a dep changes, a dev hot-reload), the cleanup
+    // cancels the old run so it can't navigate, and a fresh run starts. Re-POSTing
+    // is safe because /api/evaluate is idempotent — a held lease returns 202 and a
+    // finished one returns the existing debrief — so the poll always resolves
+    // forward to the debrief instead of stranding a completed evaluation.
     let cancelled = false;
     const MAX_POLLS = 40; // ~2 minutes at 3s
 
@@ -102,7 +105,6 @@ export default function Evaluating() {
           <button
             type="button"
             onClick={() => {
-              started.current = false;
               setErrored(false);
               // re-trigger by reloading the same URL
               router.refresh();

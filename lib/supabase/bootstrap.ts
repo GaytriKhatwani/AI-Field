@@ -8,20 +8,21 @@ import { createClient } from "./client";
 export async function ensureAnonymousUser() {
   const supabase = createClient();
 
+  // getSession() is local (no network). For a returning visitor that's the whole
+  // cost — we trust the local session's user client-side; RLS on the server is the
+  // real guard, and middleware keeps the token fresh. This avoids a getUser()
+  // round-trip and a redundant profile upsert on every load.
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
-  if (!session) {
-    const { error } = await supabase.auth.signInAnonymously();
-    if (error) throw error;
-  }
+  if (session?.user) return { supabase, user: session.user };
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // First visit: create the anonymous user and their profile row once.
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error) throw error;
+  const user = data.user;
   if (user) {
-    // Create the profile row once; ignore if it already exists.
     await supabase
       .from("profiles")
       .upsert({ user_id: user.id }, { onConflict: "user_id", ignoreDuplicates: true });

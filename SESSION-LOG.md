@@ -104,3 +104,50 @@ The **entire server side is now built and typechecks**; `npm run build` passes w
 
 - A **Gemini API key** and a **Supabase project** (into `.env.local`) before M0/M1 runs end-to-end.
 - Run the app: `npm run dev` → http://localhost:3000. **Run it in a real terminal, not a Claude background task** — a server started inside the assistant's session environment is network-isolated from the user's browser and won't be reachable.
+
+---
+
+# Session — 2026-08-26 (M1 live, hardening, latency)
+
+**Phase:** M0+M1 shipped on the real backend and past the discrimination gate. This session: interactive walk, M1 gap-fixing, mock cleanup, and a latency pass. All the changes below are in this commit.
+
+## Milestones reached (this + immediately prior sessions)
+- **Frontend cutover done** — the app runs entirely on anon-auth + Supabase + the 3 API routes; the mock is gone.
+- **Provider switched Gemini → Anthropic Claude Sonnet 5** (Gemini free tier's ~20 req/day cap blocked the gate). One seam: `lib/ai/provider.ts` (workbench effort `low`, judge effort `high` + Zod structured output). `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` in `.env.local`.
+- **Migration applied live; RLS isolation verified; discrimination gate PASSED** on Meeting Chaos.
+
+## Interactive UI walk (Claude drove the user's Chrome)
+Walked onboarding→field→briefing→workbench(give-to-AI, real instrument, select-to-capture)→submit→judge(~30s)→debrief→profile update→next assignment. Thesis holds live: honest, evidence-anchored read; deterministic band movement with weight-0 freeze; gap-driven next rep.
+
+## Fixes made this session (all `tsc` + `npm run build` + verify suite green)
+- **Field ↔ Debrief gap contradiction** — Field re-derived the gap via `gapCompetency(profile)` instead of the judge's `practice_competency`; now sources it from `lastDebrief.practice` / durable `recommendation.practice`.
+- **Evaluating page could strand a finished eval** — removed the `started` re-entry guard so an effect re-run (dev Fast Refresh) restarts the poll (safe via route idempotency) instead of completing server-side but never navigating.
+- **Recommendation was sessionStorage-only** — now derived durably from the latest stored evaluation on bootstrap (survives new tab / cleared storage).
+- **Tone-to-experience wired** — evaluate route passes `profiles.ai_usage` as `operatorExperience` to the judge (tone only, never the bar); was stubbed in the prompt, never passed.
+- **Review a past rep** — Field record rows → `/debrief?attemptId=…` review mode (idempotent return_existing fetch) with a read-only **"What you submitted"** section; debrief page wrapped in `<Suspense>` for `useSearchParams`.
+- **select-to-capture** polish — strip list markers; table capture targets the content column, not col-0.
+- **Register copy** — `shown once` / `shown in a few reps` → `beginning to show` / `clearly shown` (they asserted false rep counts).
+- **SPEC.md** — de-Gemini'd (provider is Claude).
+
+## Missing tests written (repo `verify-*` convention, DB boundary, real anon user)
+- `scripts/verify-idempotency.mjs` — exactly-once + recovery via the evaluation RPCs (claim→run/in_progress/return_existing, duplicate-finalize rejected, stale-lease reclaim, reset).
+- `scripts/verify-guardrails.mjs` — rate-limit 429 mechanism (`consume_rate_limit`).
+- `scripts/verify-no-secret-leak.mjs` — no ANTHROPIC/SUPABASE secret in `.next/static`.
+- (Workbench ~12-msg ceiling stays app-layer; covered by the walk.)
+
+## Mock cleanup
+- Deleted orphaned `lib/mock/` (ai.ts + examiner.ts) — nothing imported it after the cutover.
+- Fixed the stale `catalog.ts` comment that claimed missions 2–4's examiner is mocked (they run the real judge; only their gate tuning is deferred to M2).
+- Confirmed: no live mocks remain — AI, examiner, DB, auth, progression, recommendation are all real.
+
+## Latency pass
+- Cold `/field` load cut from ~6 sequential Supabase round-trips to **4 parallel** (network-verified). `bootstrap.ts` trusts the local `getSession()` for returning users (dropping a `getUser()` network call + redundant profile upsert); `store.tsx` collapses `loadCompleted` to one nested embed and replaces the 2-query `loadRecommendation` with a 1-query JSON-arrow `loadLatestPractice`, run inside the same `Promise.all`.
+
+## CAUTION learned
+- **Never run `npm run build` while the user's `next dev` is running** — both write `.next/` and the production build corrupts the dev server (intermittent 404s on all routes). Fix: stop dev, `rm -rf .next`, `npm run dev`. For verifying code changes during a live dev session, use `tsc --noEmit`, not `build`.
+
+## Deferred (explicit)
+- **M2 = judge tuning + discrimination gate for missions 2–4** (The Bad Prompt, The Brief, Don't Trust the AI) — the agreed next milestone; real per-mission API cost; `scripts/gate-meeting-chaos.ts` is the pattern.
+- Held until after M2: making mission content real (CMS/uploads), hardcoded fallback ids, provisional progression-curve constants.
+- User-owned: CAPTCHA/Turnstile (Supabase dashboard) + Vercel deploy, still building.
+- Still owed: `DESIGN.md`, real-device mobile QA.

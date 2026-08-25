@@ -83,7 +83,7 @@ The five durable skills (the "Operator Profile"): **Context, Direction, Iteratio
 **App shell & delivery**
 - Next.js (App Router) + React + Tailwind + selective shadcn/ui. Hosted on Vercel, continuous deploy from GitHub.
 - All AI calls happen **server-side** via two API routes; secrets never reach the browser.
-- AI provider is isolated behind one thin module (`lib/ai/provider.ts`); Gemini is the only provider. Model id via `GEMINI_MODEL` (default `gemini-3.7-flash`). Configure behaviour via **structured output + thinking level**, not temperature/top-p/top-k (removed on newer Flash models).
+- AI provider is isolated behind one thin module (`lib/ai/provider.ts`); Anthropic Claude is the only provider (switched from Gemini during M1 — the Gemini free tier's ~20 req/day cap blocked the discrimination gate). Model id via `ANTHROPIC_MODEL` (Claude Sonnet 5). Configure behaviour via **structured output + effort level** (workbench low, judge high), not temperature/top-p/top-k.
 
 **Identity & data**
 - Supabase (Postgres + Auth + RLS), using **publishable/secret** key naming (not legacy anon/service_role).
@@ -106,7 +106,7 @@ The five durable skills (the "Operator Profile"): **Context, Direction, Iteratio
 
 **Evaluation idempotency & recovery** (timestamp lease, not a queue)
 - `evaluated` → return existing evaluation. `evaluating` + evaluation exists → return it. `evaluating` + recent lease → safe "in progress" response. `evaluating` + stale lease → reclaim/retry. `submitted` → atomically claim (`→ evaluating`, set `evaluation_started_at`), then run.
-- On a Gemini failure before persistence, reset to `submitted` where safe. Final insert + competency updates + transition to `evaluated` run in one transaction/RPC; `UNIQUE(attempt_id)` is the duplicate-write backstop.
+- On a judge (Claude) failure before persistence, reset to `submitted` where safe. Final insert + competency updates + transition to `evaluated` run in one transaction/RPC; `UNIQUE(attempt_id)` is the duplicate-write backstop.
 
 **Missions as content**
 - Missions are hand-authored TS in the repo (`lib/missions/*`), no CMS. Each declares scenario/objective/constraints, resources, a neutral `workbenchSystemContext` (not the rubric), a `DeliverableSpec`, `competencyWeights`, and `judgeGuidance`.
@@ -118,14 +118,14 @@ The five durable skills (the "Operator Profile"): **Context, Direction, Iteratio
 
 **What makes a good test here:** assert **external, observable behaviour** — HTTP responses, rows written, competency deltas, the recommended mission id — never internal function calls or prompt wording.
 
-**Primary seam — the `/api/evaluate` route with the Gemini judge mocked.** This single high seam is where the thesis lives and is tested deterministically by feeding **canned judge JSON** for a given attempt fixture, then asserting:
+**Primary seam — the `/api/evaluate` route / evaluation RPCs with the judge (Claude) mocked or bypassed.** This single high seam is where the thesis lives and is tested deterministically by feeding **canned judge JSON** for a given attempt fixture, then asserting:
 - the correct `evaluations` row is written (with version stamps) and competency bars move as the deterministic rule dictates;
 - **exactly-once** behaviour: a second/concurrent call returns the same canonical evaluation, makes no second (mock) judge call, and does not double-move the profile;
 - **recovery**: a stale `evaluating` lease can be reclaimed; a simulated judge failure resets the attempt to `submitted`.
 
 **The discrimination gate — a separate real-LLM eval (the M1 go/no-go).** Not a unit test: run the real judge against a **strong** scripted transcript (attaches notes, sets audience/constraints, iterates, verifies) and a **weak** one (single vague prompt, first answer accepted, nothing attached) for Meeting Chaos, and assert the resulting bands, coaching, and profile movement **meaningfully differ** in the expected direction. Tune judge prompt + weights until this holds reliably. **A technically-passing pipeline that cannot discriminate does not pass the gate.**
 
-**Secondary checks:** the `/api/workbench` route enforces the ~12-message ceiling and rate limits (429); RLS prevents a second anonymous user from reading the first's rows; neither the Gemini key nor the Supabase secret key appears in any browser payload.
+**Secondary checks:** the `/api/workbench` route enforces the ~12-message ceiling and rate limits (429); RLS prevents a second anonymous user from reading the first's rows; neither the Anthropic key nor the Supabase secret key appears in any browser payload.
 
 **Prior art:** none — greenfield. This spec establishes the pattern: route-level integration tests with the AI provider mocked at `lib/ai/provider.ts`, plus a small real-LLM eval harness for the gate.
 

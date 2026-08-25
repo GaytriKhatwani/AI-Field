@@ -50,9 +50,9 @@ export function bandToState(band: Band): { marker: MarkerKind; phrase: string } 
     case "not_shown":
       return { marker: "open", phrase: "not yet worked" };
     case "emerging":
-      return { marker: "filled", phrase: "shown once" };
+      return { marker: "filled", phrase: "beginning to show" };
     case "developing":
-      return { marker: "filled", phrase: "shown in a few reps" };
+      return { marker: "filled", phrase: "clearly shown" };
     case "proficient":
       return { marker: "ringed", phrase: "shown consistently" };
     case "strong":

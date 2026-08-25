@@ -121,6 +121,7 @@ export async function POST(req: Request) {
   const attemptId = body.attemptId;
   if (!attemptId)
     return NextResponse.json({ error: "attemptId required" }, { status: 400 });
+  console.log(`[evaluate] POST attempt=${attemptId} user=${userId}`);
 
   // Load the attempt (RLS ensures it's the caller's own).
   const { data: attempt } = await supabase
@@ -144,12 +145,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "claim_failed" }, { status: 500 });
 
   const action = (claimRows as { action: string }[] | null)?.[0]?.action;
+  console.log(`[evaluate] claim action=${action} (attempt status=${attempt.status})`);
 
   if (action === "return_existing") {
     const debrief = await returnExisting(supabase, userId, attemptId, attempt.mission_id);
     if (!debrief)
       return NextResponse.json({ error: "evaluation_missing" }, { status: 500 });
-    return NextResponse.json({ status: "evaluated", debrief });
+    // deliverable + missionId let a later "review this rep" view render what was
+    // submitted without a second round-trip. Harmless extra fields for the live flow.
+    return NextResponse.json({
+      status: "evaluated",
+      debrief,
+      missionId: attempt.mission_id,
+      deliverable: attempt.submitted_deliverable ?? { lists: {}, tables: {} },
+    });
   }
   if (action === "in_progress") {
     // A fresh lease is held elsewhere (double-click / retry) — tell the client to poll.
@@ -167,20 +176,38 @@ export async function POST(req: Request) {
     tables: {},
   }) as SubmittedDeliverable;
 
-  const prompt = buildJudgePrompt({ mission, messages, events, deliverable });
+  // The operator's stated AI experience pitches the debrief TONE only — never the
+  // standard (the judge is told not to lower the bar). Same standard for everyone.
+  const { data: profileRow } = await supabase
+    .from("profiles")
+    .select("ai_usage")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  const prompt = buildJudgePrompt({
+    mission,
+    messages,
+    events,
+    deliverable,
+    operatorExperience: profileRow?.ai_usage ?? undefined,
+  });
 
   let judge: JudgeOutput;
   let modelId: string;
   try {
+    const t0 = Date.now();
     const result = await runJudge(prompt);
+    console.log(`[evaluate] judge returned in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     judge = result.output;
     modelId = result.modelId;
     // Guard: the judge must score every competency the mission weighted.
     const need = new Set(weightedCompetencies(mission));
     for (const ev of judge.competency_evidence) need.delete(ev.competency);
-    if (need.size > 0) throw new Error("Judge omitted required competencies.");
-  } catch {
+    if (need.size > 0)
+      throw new Error(`Judge omitted required competencies: ${[...need].join(", ")}`);
+  } catch (err) {
     // Judge failed before anything was persisted — release the lease for retry.
+    console.error("[evaluate] judge_failed:", err instanceof Error ? err.message : err);
     await supabase.rpc("reset_attempt_to_submitted", { p_attempt_id: attemptId });
     return NextResponse.json({ error: "judge_failed" }, { status: 502 });
   }
@@ -207,12 +234,14 @@ export async function POST(req: Request) {
   });
 
   if (finalizeErr) {
+    console.error("[evaluate] finalize error:", finalizeErr.message);
     // Most likely a concurrent finalize won the unique(attempt_id) race — return
     // the canonical evaluation rather than erroring or double-counting.
     const debrief = await returnExisting(supabase, userId, attemptId, attempt.mission_id);
     if (debrief) return NextResponse.json({ status: "evaluated", debrief });
     return NextResponse.json({ error: "finalize_failed" }, { status: 500 });
   }
+  console.log(`[evaluate] finalized attempt=${attemptId} -> evaluated`);
 
   const debrief = buildDebrief({
     judge,

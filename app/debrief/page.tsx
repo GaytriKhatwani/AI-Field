@@ -1,39 +1,117 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useField } from "@/lib/store";
 import { getMission } from "@/lib/missions";
 import { COMPETENCY_META, bandLabel } from "@/lib/competencies";
 import { Marker } from "@/components/CapabilityRegister";
 import { bandToState } from "@/lib/competencies";
 import { Arrow, Back } from "@/components/icons";
+import type { Debrief } from "@/lib/debrief/types";
+
+type Deliverable = {
+  lists: Record<string, string[]>;
+  tables: Record<string, Record<string, string>[]>;
+};
+
+function Loading() {
+  return (
+    <main className="grid min-h-screen place-items-center">
+      <div className="meta animate-breathe" style={{ letterSpacing: "0.2em" }}>
+        AI&nbsp;Field
+      </div>
+    </main>
+  );
+}
 
 export default function DebriefPage() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <DebriefInner />
+    </Suspense>
+  );
+}
+
+function DebriefInner() {
   const router = useRouter();
+  const params = useSearchParams();
+  const reviewAttemptId = params.get("attemptId");
+  const isReview = !!reviewAttemptId;
+
   const { hydrated, lastDebrief, completed } = useField();
 
-  useEffect(() => {
-    if (hydrated && !lastDebrief) router.replace("/field");
-  }, [hydrated, lastDebrief, router]);
+  // Review mode fetches a past attempt's debrief + submitted deliverable through
+  // the idempotent return_existing path (no re-judge, no double-count).
+  const [review, setReview] = useState<{
+    debrief: Debrief;
+    deliverable: Deliverable;
+    missionId: string;
+  } | null>(null);
+  const [reviewError, setReviewError] = useState(false);
 
-  if (!hydrated || !lastDebrief) {
+  // Live flow: with no debrief in hand and not reviewing, there's nothing here.
+  useEffect(() => {
+    if (!isReview && hydrated && !lastDebrief) router.replace("/field");
+  }, [isReview, hydrated, lastDebrief, router]);
+
+  useEffect(() => {
+    if (!isReview || !hydrated) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/evaluate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ attemptId: reviewAttemptId }),
+        });
+        const data = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (data?.debrief && data?.deliverable && data?.missionId) {
+          setReview({
+            debrief: data.debrief,
+            deliverable: data.deliverable,
+            missionId: data.missionId,
+          });
+        } else {
+          setReviewError(true);
+        }
+      } catch {
+        if (!cancelled) setReviewError(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isReview, hydrated, reviewAttemptId]);
+
+  if (isReview && reviewError) {
     return (
-      <main className="grid min-h-screen place-items-center">
-        <div className="meta animate-breathe" style={{ letterSpacing: "0.2em" }}>
-          AI&nbsp;Field
-        </div>
+      <main className="mx-auto flex min-h-screen max-w-reading flex-col justify-center px-[clamp(1.25rem,5vw,3.25rem)] py-16">
+        <p className="section-label mb-5">Couldn&rsquo;t open this rep</p>
+        <h1 className="display max-w-[16ch] text-ink" style={{ fontSize: "clamp(1.9rem,5vw,2.8rem)" }}>
+          That debrief didn&rsquo;t load.
+        </h1>
+        <button type="button" onClick={() => router.push("/field")} className="btn mt-8 self-start">
+          Back to the Field
+        </button>
       </main>
     );
   }
 
-  const d = lastDebrief;
-  const next = getMission(d.nextMissionId)!;
+  const d = isReview ? review?.debrief : lastDebrief;
+
+  if (!hydrated || !d) return <Loading />;
+
   const moved = d.moves.filter((m) => m.moved);
-  const justCompleted = completed[0]?.title ?? "Mission";
+  const headerTitle = isReview
+    ? (getMission(review!.missionId)?.title ?? "Mission")
+    : (completed[0]?.title ?? "Mission");
   const practiceAfter = bandLabel(
     d.moves.find((m) => m.competency === d.practice)?.after ?? "not_shown",
   );
+  const next = isReview ? null : getMission(d.nextMissionId)!;
+  const mission = isReview ? getMission(review!.missionId) : null;
 
   return (
     <main className="mx-auto max-w-reading px-[clamp(1.25rem,5vw,3.25rem)] pb-24 pt-[clamp(1.5rem,4.5vw,3.25rem)]">
@@ -47,7 +125,9 @@ export default function DebriefPage() {
 
       {/* what happened */}
       <header className="mt-[clamp(2rem,6vw,3.5rem)] max-w-[16ch] animate-riseIn">
-        <p className="meta mb-4">{justCompleted} · Debrief</p>
+        <p className="meta mb-4">
+          {headerTitle} · {isReview ? "Reviewing a past rep" : "Debrief"}
+        </p>
         <h1
           className="display text-ink"
           style={{ fontSize: "clamp(2.3rem,5.5vw,3.4rem)", lineHeight: 1.02 }}
@@ -162,36 +242,118 @@ export default function DebriefPage() {
         </p>
       </section>
 
+      {/* review mode: what you actually submitted */}
+      {isReview && mission && (
+        <>
+          <hr className="rule my-[clamp(2.5rem,6vw,3.5rem)]" />
+          <section aria-label="What you submitted">
+            <h2 className="section-label mb-5">What you submitted</h2>
+            <div className="space-y-7">
+              {mission.deliverable.fields.map((f) => {
+                const empty = <p className="text-[0.9rem] text-ink-3">— left empty —</p>;
+                return (
+                  <div key={f.id}>
+                    <h3 className="section-label mb-2" style={{ color: "var(--ink-2)" }}>
+                      {f.label}
+                    </h3>
+                    {f.kind === "list" ? (
+                      (review!.deliverable.lists[f.id]?.length ?? 0) > 0 ? (
+                        <ul className="m-0 max-w-measure list-disc space-y-1 pl-5">
+                          {review!.deliverable.lists[f.id].map((item, i) => (
+                            <li key={i} className="text-[0.96rem] leading-relaxed text-ink">
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        empty
+                      )
+                    ) : (review!.deliverable.tables[f.id]?.length ?? 0) > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full border-collapse text-[0.92rem]">
+                          <thead>
+                            <tr>
+                              {f.columns.map((c) => (
+                                <th
+                                  key={c.id}
+                                  className="section-label border-b border-hairline pb-1.5 pr-4 text-left"
+                                >
+                                  {c.label}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {review!.deliverable.tables[f.id].map((row, ri) => (
+                              <tr key={ri}>
+                                {f.columns.map((c) => (
+                                  <td
+                                    key={c.id}
+                                    className="border-b border-hairline py-2 pr-4 align-top text-ink"
+                                  >
+                                    {row[c.id] ? row[c.id] : <span className="text-ink-3">—</span>}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      empty
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </>
+      )}
+
       <hr className="rule my-[clamp(2.5rem,6vw,3.5rem)]" />
 
-      {/* the gap resolves into the next assignment */}
-      <section className="animate-riseIn" aria-label="Your next assignment">
-        <p className="meta mb-4">Your next assignment</p>
-        <p className="max-w-[38ch] text-[clamp(1.05rem,2.4vw,1.2rem)] font-medium leading-[1.45] text-ink">
-          Because your{" "}
-          <span className="font-semibold text-accent">
-            {COMPETENCY_META[d.practice].label}
-          </span>{" "}
-          is {practiceAfter}, your next rep is built to draw it out.
-        </p>
-        <h2
-          className="display mt-6 text-ink"
-          style={{ fontSize: "clamp(2.2rem,6.5vw,3.6rem)" }}
-        >
-          {next.title}
-        </h2>
-        <p className="mt-3 max-w-[36ch] text-[1.05rem] leading-normal text-ink-2">
-          {next.premise}
-        </p>
-        <button
-          type="button"
-          onClick={() => router.push(`/briefing/${next.id}`)}
-          className="btn mt-7"
-        >
-          Begin {next.title}
-          <Arrow className="arr" />
-        </button>
-      </section>
+      {isReview ? (
+        /* review: no forward CTA — the recommendation lives on the Field, current */
+        <section aria-label="Back to your practice">
+          <p className="max-w-measure text-[0.95rem] leading-relaxed text-ink-2">
+            This is the read from that rep. Your live recommendation — built from
+            everything you&rsquo;ve done since — is waiting on the Field.
+          </p>
+          <button type="button" onClick={() => router.push("/field")} className="btn mt-6">
+            Back to the Field
+            <Arrow className="arr" />
+          </button>
+        </section>
+      ) : (
+        /* live: the gap resolves into the next assignment */
+        <section className="animate-riseIn" aria-label="Your next assignment">
+          <p className="meta mb-4">Your next assignment</p>
+          <p className="max-w-[38ch] text-[clamp(1.05rem,2.4vw,1.2rem)] font-medium leading-[1.45] text-ink">
+            Because your{" "}
+            <span className="font-semibold text-accent">
+              {COMPETENCY_META[d.practice].label}
+            </span>{" "}
+            is {practiceAfter}, your next rep is built to draw it out.
+          </p>
+          <h2
+            className="display mt-6 text-ink"
+            style={{ fontSize: "clamp(2.2rem,6.5vw,3.6rem)" }}
+          >
+            {next!.title}
+          </h2>
+          <p className="mt-3 max-w-[36ch] text-[1.05rem] leading-normal text-ink-2">
+            {next!.premise}
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push(`/briefing/${next!.id}`)}
+            className="btn mt-7"
+          >
+            Begin {next!.title}
+            <Arrow className="arr" />
+          </button>
+        </section>
+      )}
     </main>
   );
 }

@@ -15,6 +15,7 @@ import { getMission } from "./missions";
 import { FRESH_PROFILE, Profile, scoreToBand } from "./competencies";
 import type { Debrief } from "./debrief/types";
 import type { CompetencyMove } from "./progression/update";
+import { recommendNext } from "./progression/recommend";
 import { ensureAnonymousUser } from "./supabase/bootstrap";
 
 // The app's client-side state, now backed by Supabase (RLS-scoped to the signed-in
@@ -28,10 +29,19 @@ export type OnboardingAnswers = {
 };
 
 export type CompletedRep = {
+  attemptId: string;
   missionId: string;
   title: string;
   shown: Competency[];
   at: number;
+};
+
+// The next-rep recommendation, derivable from the latest stored evaluation. Kept
+// in state (not just sessionStorage) so the Field shows the right assignment and
+// gap even on a cold load in a fresh tab, where lastDebrief is absent.
+export type Recommendation = {
+  nextMissionId: string;
+  practice: Competency;
 };
 
 type FieldState = {
@@ -41,6 +51,7 @@ type FieldState = {
   onboarding: OnboardingAnswers;
   profile: Profile;
   completed: CompletedRep[];
+  recommendation: Recommendation | null;
   lastDebrief: Debrief | null;
 };
 
@@ -60,6 +71,7 @@ const DEFAULT: FieldState = {
   onboarding: {},
   profile: { ...FRESH_PROFILE },
   completed: [],
+  recommendation: null,
   lastDebrief: null,
 };
 
@@ -88,40 +100,71 @@ async function loadCompetencies(supabase: SupabaseClient, userId: string): Promi
   return p;
 }
 
-async function loadCompleted(supabase: SupabaseClient, userId: string): Promise<CompletedRep[]> {
+type CompletedRow = {
+  id: string;
+  mission_id: string;
+  updated_at: string;
+  // 1:1 embed (evaluations.attempt_id is UNIQUE); PostgREST may hand it back as
+  // an object or a single-element array depending on version.
+  evaluations:
+    | { competency_results: CompetencyMove[] }
+    | { competency_results: CompetencyMove[] }[]
+    | null;
+};
+
+async function loadCompleted(supabase: SupabaseClient): Promise<CompletedRep[]> {
+  // One round-trip: each evaluated attempt with its evaluation embedded. RLS
+  // scopes the rows to the caller.
   const { data: attempts } = await supabase
     .from("challenge_attempts")
-    .select("id, mission_id, updated_at")
+    .select("id, mission_id, updated_at, evaluations(competency_results)")
     .eq("status", "evaluated")
     .order("updated_at", { ascending: false });
   if (!attempts?.length) return [];
 
-  const ids = attempts.map((a) => a.id);
-  const { data: evals } = await supabase
-    .from("evaluations")
-    .select("attempt_id, competency_results")
-    .in("attempt_id", ids);
-  const movesByAttempt = new Map<string, CompetencyMove[]>(
-    (evals ?? []).map((e) => [e.attempt_id as string, (e.competency_results as CompetencyMove[]) ?? []]),
-  );
-
   const seen = new Set<string>();
   const out: CompletedRep[] = [];
-  for (const a of attempts) {
+  for (const a of attempts as unknown as CompletedRow[]) {
     if (seen.has(a.mission_id)) continue; // most recent per mission
     seen.add(a.mission_id);
-    const moves = movesByAttempt.get(a.id) ?? [];
+    const ev = Array.isArray(a.evaluations) ? a.evaluations[0] : a.evaluations;
+    const moves = ev?.competency_results ?? [];
     const shown = moves
       .filter((m) => m.moved && m.after !== "not_shown")
       .map((m) => m.competency);
     out.push({
+      attemptId: a.id,
       missionId: a.mission_id,
       title: getMission(a.mission_id)?.title ?? a.mission_id,
       shown,
-      at: new Date(a.updated_at as string).getTime(),
+      at: new Date(a.updated_at).getTime(),
     });
   }
   return out;
+}
+
+// The current gap is the judge's practice_competency from the most recent
+// evaluation — the single authority behind the recommendation. Pulled as just
+// that one string via a JSON arrow, so it's a tiny query that runs in parallel
+// with the rest of the load instead of a second sequential round-trip.
+async function loadLatestPractice(supabase: SupabaseClient): Promise<Competency | null> {
+  const { data } = await supabase
+    .from("evaluations")
+    .select("practice:raw_evaluation->>practice_competency")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const practice = (data as { practice?: string } | null)?.practice;
+  return (practice as Competency | undefined) ?? null;
+}
+
+// Pure: same authority (recommendNext) the server uses, so no duplicated state.
+function buildRecommendation(
+  practice: Competency | null,
+  completedIds: string[],
+): Recommendation | null {
+  if (!practice) return null;
+  return { nextMissionId: recommendNext(practice, completedIds), practice };
 }
 
 export function FieldProvider({ children }: { children: ReactNode }) {
@@ -146,12 +189,19 @@ export function FieldProvider({ children }: { children: ReactNode }) {
         supabaseRef.current = supabase as unknown as SupabaseClient;
         if (!user) throw new Error("no anonymous user");
 
-        const [profileRow, profile, completed] = await Promise.all([
-          loadProfileRow(supabase as unknown as SupabaseClient, user.id),
-          loadCompetencies(supabase as unknown as SupabaseClient, user.id),
-          loadCompleted(supabase as unknown as SupabaseClient, user.id),
+        const client = supabase as unknown as SupabaseClient;
+        const [profileRow, profile, completed, practice] = await Promise.all([
+          loadProfileRow(client, user.id),
+          loadCompetencies(client, user.id),
+          loadCompleted(client),
+          loadLatestPractice(client),
         ]);
         if (cancelled) return;
+
+        const recommendation = buildRecommendation(
+          practice,
+          completed.map((c) => c.missionId),
+        );
 
         setState({
           hydrated: true,
@@ -164,6 +214,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
           },
           profile,
           completed,
+          recommendation,
           lastDebrief,
         });
       } catch {
@@ -180,11 +231,16 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     const supabase = supabaseRef.current;
     const userId = state.userId;
     if (!supabase || !userId) return;
-    const [profile, completed] = await Promise.all([
+    const [profile, completed, practice] = await Promise.all([
       loadCompetencies(supabase, userId),
-      loadCompleted(supabase, userId),
+      loadCompleted(supabase),
+      loadLatestPractice(supabase),
     ]);
-    setState((s) => ({ ...s, profile, completed }));
+    const recommendation = buildRecommendation(
+      practice,
+      completed.map((c) => c.missionId),
+    );
+    setState((s) => ({ ...s, profile, completed, recommendation }));
   }, [state.userId]);
 
   const saveOnboarding = useCallback(
@@ -220,7 +276,13 @@ export function FieldProvider({ children }: { children: ReactNode }) {
   );
 
   const setLastDebrief = useCallback((d: Debrief) => {
-    setState((s) => ({ ...s, lastDebrief: d }));
+    // Keep the recommendation consistent with the debrief immediately, before the
+    // next refresh reloads it from the backend.
+    setState((s) => ({
+      ...s,
+      lastDebrief: d,
+      recommendation: { nextMissionId: d.nextMissionId, practice: d.practice },
+    }));
     try {
       sessionStorage.setItem(DEBRIEF_KEY, JSON.stringify(d));
     } catch {

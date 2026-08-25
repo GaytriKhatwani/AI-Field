@@ -1,8 +1,10 @@
 import type { Mission } from "./types";
 
 // Missions 2–4. Authored as real, playable content so the practice loop is
-// walkable through the one generic workbench. Their judge tuning / discrimination
-// gate remains deferred backend work per SPEC.md — the examiner here is mocked.
+// walkable through the one generic workbench. They run on the SAME real examiner
+// as Meeting Chaos (lib/ai/provider.ts) — nothing here is mocked. What's deferred
+// (M2) is their judge tuning / discrimination gate, so their scoring is real but
+// not yet proven to discriminate strong from weak. See SPEC.md.
 
 export const theBadPrompt: Mission = {
   id: "the-bad-prompt",

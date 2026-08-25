@@ -18,16 +18,26 @@ import { Arrow, Chevron } from "@/components/icons";
 
 export default function Field() {
   const router = useRouter();
-  const { hydrated, profile, completed, lastDebrief } = useField();
+  const { hydrated, profile, completed, recommendation, lastDebrief } = useField();
   const [recordOpen, setRecordOpen] = useState(false);
   const [openMission, setOpenMission] = useState<string | null>(null);
 
   const completedIds = completed.map((c) => c.missionId);
   const hasReps = completed.length > 0;
-  const gap = hasReps ? gapCompetency(profile) : null;
+  // The gap is the competency the judge chose to practise next (what actually
+  // drove the recommendation) — the same authority behind nextMissionId. Prefer
+  // the just-finished debrief, then the durable recommendation loaded from the
+  // backend, and only fall back to the profile-derived weakest when neither is
+  // available — so the "your gap" marker can never contradict the recommended
+  // mission, even on a cold load in a fresh tab.
+  const gap = hasReps
+    ? (lastDebrief?.practice ?? recommendation?.practice ?? gapCompetency(profile))
+    : null;
 
   const recommendedId =
-    lastDebrief?.nextMissionId ?? (hasReps ? "the-bad-prompt" : "meeting-chaos");
+    lastDebrief?.nextMissionId ??
+    recommendation?.nextMissionId ??
+    (hasReps ? "the-bad-prompt" : "meeting-chaos");
   const recommended = getMission(recommendedId) ?? getMission("meeting-chaos")!;
 
   const rest = MISSIONS.filter(
@@ -121,22 +131,35 @@ export default function Field() {
       {recordOpen && (
         <div className="mt-4 max-w-measure animate-fadeUp rounded-sm border border-hairline bg-raised px-4 py-4 text-[0.9rem] text-ink-2">
           {hasReps ? (
-            <ul className="m-0 list-none space-y-3 p-0">
+            <ul className="m-0 list-none space-y-1 p-0">
               {completed.map((c) => (
-                <li key={c.missionId}>
-                  <span className="font-semibold text-ink">{c.title}</span>
-                  {c.shown.length > 0 ? (
-                    <>
-                      {" "}
-                      — showed{" "}
-                      {c.shown
-                        .map((s) => COMPETENCY_META[s].label)
-                        .join(", ")}
-                      .
-                    </>
-                  ) : (
-                    " — logged."
-                  )}
+                <li key={c.attemptId}>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/debrief?attemptId=${c.attemptId}`)}
+                    className="group -mx-2 flex w-full items-baseline gap-1 rounded-sm px-2 py-1.5 text-left transition-colors hover:bg-ground"
+                  >
+                    <span className="font-semibold text-ink group-hover:text-accent">
+                      {c.title}
+                    </span>
+                    <span className="text-ink-2">
+                      {c.shown.length > 0 ? (
+                        <>
+                          {" "}
+                          — showed{" "}
+                          {c.shown.map((s) => COMPETENCY_META[s].label).join(", ")}.
+                        </>
+                      ) : (
+                        " — logged."
+                      )}
+                    </span>
+                    <span
+                      aria-hidden
+                      className="ml-auto self-center text-ink-3 opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      Review ›
+                    </span>
+                  </button>
                 </li>
               ))}
             </ul>
