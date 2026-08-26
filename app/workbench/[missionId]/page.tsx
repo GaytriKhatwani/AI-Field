@@ -66,7 +66,9 @@ export default function Workbench() {
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [mode, setMode] = useState<"instrument" | "deliverable">("deliverable");
+  // Mobile lands on the instrument: you direct the AI before there's anything
+  // to curate, and the deliverable starts empty. A capture switches to it.
+  const [mode, setMode] = useState<"instrument" | "deliverable">("instrument");
   const [deliverable, setDeliverable] = useState<Deliverable>(() =>
     mission ? emptyDeliverable(mission.deliverable.fields) : { lists: {}, tables: {} },
   );
@@ -81,6 +83,16 @@ export default function Workbench() {
   const transcriptRef = useRef<HTMLOListElement>(null);
   const captureRef = useRef<HTMLDivElement>(null);
   const fieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // keyboard-reachable capture: which AI message has its "add to a section"
+  // picker open (the select-to-capture toolbar is pointer-only, so every reply
+  // also carries a focusable path into the deliverable).
+  const [pickerFor, setPickerFor] = useState<string | null>(null);
+  const [emptyHint, setEmptyHint] = useState(false);
+  // draft persistence: the workbench is the longest-dwell surface, so the
+  // transcript + given resources + half-built deliverable survive a refresh or
+  // an accidental navigation instead of being lost with the React state.
+  const [restored, setRestored] = useState(false);
+  const draftKey = `aifield:wb:${params.missionId}`;
 
   // clear the landing flash after it plays
   useEffect(() => {
@@ -110,6 +122,45 @@ export default function Workbench() {
       window.removeEventListener("keydown", onKey);
     };
   }, [capture]);
+
+  // rehydrate a saved draft once on mount, before the persist effect can run —
+  // so a refresh mid-attempt restores work rather than clobbering it with empty
+  // state. idRef is advanced past the restored ids so new turns don't collide.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (raw) {
+        const d = JSON.parse(raw);
+        if (d && d.v === 1) {
+          if (typeof d.attemptId === "string") setAttemptId(d.attemptId);
+          if (Array.isArray(d.messages)) {
+            setMessages(d.messages);
+            idRef.current = d.messages.length;
+          }
+          if (Array.isArray(d.given)) setGiven(d.given);
+          if (d.deliverable?.lists && d.deliverable?.tables) setDeliverable(d.deliverable);
+        }
+      }
+    } catch {
+      /* private mode / quota / malformed draft — start clean */
+    }
+    setRestored(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+
+  // persist the draft once restore has run and the AI isn't mid-stream (so a
+  // partial reply and per-token thrash never hit storage). Cleared on submit.
+  useEffect(() => {
+    if (!restored || thinking || submitting) return;
+    try {
+      localStorage.setItem(
+        draftKey,
+        JSON.stringify({ v: 1, attemptId, messages, given, deliverable }),
+      );
+    } catch {
+      /* storage unavailable — the attempt still works, just isn't recoverable */
+    }
+  }, [restored, thinking, submitting, attemptId, messages, given, deliverable, draftKey]);
 
   const userTurns = messages.filter((m) => m.role === "user").length;
   const atCeiling = userTurns >= HARD_CEILING;
@@ -211,6 +262,13 @@ export default function Workbench() {
         setSubmitting(false);
         return;
       }
+      // handed in — the draft is now the server's; drop the local copy so a
+      // later visit doesn't rehydrate a submitted, uneditable attempt.
+      try {
+        localStorage.removeItem(draftKey);
+      } catch {
+        /* ignore */
+      }
       router.push(`/evaluating?attemptId=${id}`);
     } catch {
       setSubmitError(
@@ -245,9 +303,13 @@ export default function Workbench() {
     setCapture({ text, x: rect.left + rect.width / 2, y: rect.top });
   }
 
-  function captureInto(f: DeliverableField) {
-    if (!capture) return;
-    const text = stripListMarker(capture.text);
+  // Shared capture: land a phrase in the chosen field, flash it, announce it,
+  // and (on mobile, where the deliverable is a separate tab) switch to it so
+  // the result is visible. Both the pointer toolbar and the keyboard picker
+  // funnel through here so they can never drift apart.
+  function commitCapture(raw: string, f: DeliverableField) {
+    const text = stripListMarker(raw);
+    if (!text) return;
     if (f.kind === "list") {
       setDeliverable((d) => ({
         ...d,
@@ -263,18 +325,27 @@ export default function Workbench() {
         tables: { ...d.tables, [f.id]: [...d.tables[f.id], row] },
       }));
     }
-    setCapture(null);
-    window.getSelection()?.removeAllRanges();
     setFlash(f.id);
     setAnnounce(`Added to ${f.label}.`);
-    // On mobile the deliverable lives on a separate tab, so the capture would
-    // land off-screen — switch to it so the operator sees the result. Harmless
-    // on desktop, where both columns are always visible.
     setMode("deliverable");
-    transcriptRef.current?.focus();
     requestAnimationFrame(() =>
       fieldRefs.current[f.id]?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
     );
+  }
+
+  // pointer path: capture the current text selection from the floating toolbar.
+  function captureInto(f: DeliverableField) {
+    if (!capture) return;
+    commitCapture(capture.text, f);
+    setCapture(null);
+    window.getSelection()?.removeAllRanges();
+    transcriptRef.current?.focus();
+  }
+
+  // keyboard path: capture a whole AI reply from its per-message picker.
+  function captureMessage(m: Msg, f: DeliverableField) {
+    commitCapture(m.text, f);
+    setPickerFor(null);
   }
 
   // ---- deliverable editors ----
@@ -332,6 +403,9 @@ export default function Workbench() {
 
   return (
     <main className="flex h-screen [height:100dvh] flex-col overflow-hidden">
+      <a href="#composer" className="skip-link">
+        Skip to the composer
+      </a>
       {/* orientation bar — persistent */}
       <header className="flex flex-none items-center gap-4 border-b border-hairline px-[clamp(1rem,3vw,1.75rem)] py-3">
         <button
@@ -358,13 +432,21 @@ export default function Workbench() {
         <button
           type="button"
           onClick={() => {
+            // Empty deliverable stays clickable so the reason is discoverable
+            // (a disabled button explained only by `title` is invisible to
+            // touch, keyboard focus, and screen readers).
+            if (deliverableEmpty) {
+              setEmptyHint(true);
+              setAnnounce("Add at least one item to your deliverable before you can hand it in.");
+              return;
+            }
+            setEmptyHint(false);
             setSubmitError(null);
             setConfirming(true);
           }}
-          disabled={deliverableEmpty || submitting || confirming}
+          disabled={submitting || confirming}
           className="btn flex-none"
           style={{ padding: "0.6em 1.2em", fontSize: "0.9rem" }}
-          title={deliverableEmpty ? "Build your deliverable before submitting" : undefined}
         >
           {submitting ? "Submitting…" : "Submit mission"}
           <Arrow className="arr" width={15} />
@@ -411,6 +493,29 @@ export default function Workbench() {
         </div>
       )}
 
+      {/* empty-deliverable hint — shown when Submit is pressed with nothing to
+          hand in; clears itself the moment the deliverable holds anything */}
+      {emptyHint && deliverableEmpty && (
+        <div
+          role="status"
+          className="flex flex-none items-center gap-3 border-b border-hairline bg-raised px-[clamp(1rem,3vw,1.75rem)] py-2.5 animate-fadeUp"
+        >
+          <p className="min-w-0 flex-1 text-[0.85rem] leading-snug text-ink">
+            Add at least one item before you hand in. Direct the AI, then use{" "}
+            <span className="font-semibold">Add to a section</span> on its reply
+            — or type into a section directly.
+          </p>
+          <button
+            type="button"
+            onClick={() => setEmptyHint(false)}
+            aria-label="Dismiss"
+            className="flex h-6 w-6 flex-none items-center justify-center text-ink-3 transition-colors hover:text-ink"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* mobile mode switch */}
       <div className="flex flex-none border-b border-hairline md:hidden">
         {(["deliverable", "instrument"] as const).map((m) => (
@@ -448,6 +553,28 @@ export default function Workbench() {
             className="min-h-0 flex-1 overflow-y-auto px-[clamp(1rem,2.5vw,1.5rem)] py-5"
             onScroll={() => capture && setCapture(null)}
           >
+          {/* working rules — the mission's constraints, carried from the
+              Briefing so the operator isn't scored on a rule that's off-screen */}
+          {mission.briefing.constraints.length > 0 && (
+            <div className="mb-7">
+              <h2 className="section-label mb-2.5">Working rules</h2>
+              <ul className="m-0 list-none space-y-1.5 p-0">
+                {mission.briefing.constraints.map((c, i) => (
+                  <li
+                    key={i}
+                    className="flex gap-2.5 text-[0.82rem] leading-snug text-ink-2"
+                  >
+                    <span
+                      aria-hidden
+                      className="mt-[0.5em] h-[4px] w-[4px] flex-none rounded-full bg-ink-3"
+                    />
+                    {c}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* resources */}
           <h2 className="section-label mb-4">Resources</h2>
           <ul className="m-0 list-none space-y-2 p-0">
@@ -525,6 +652,7 @@ export default function Workbench() {
                 tabIndex={-1}
                 role="log"
                 aria-live="polite"
+                aria-busy={thinking}
                 aria-label="Your exchange with the AI"
                 className="m-0 list-none space-y-4 p-0 outline-none"
               >
@@ -552,9 +680,49 @@ export default function Workbench() {
                           {m.text.replace(/^\[|\]$/g, "")}
                         </p>
                       ) : (
-                        <p className="mt-1 whitespace-pre-wrap text-[0.92rem] leading-relaxed text-ink">
-                          {m.text}
-                        </p>
+                        <>
+                          <p className="mt-1 whitespace-pre-wrap text-[0.92rem] leading-relaxed text-ink">
+                            {m.text}
+                          </p>
+                          {m.role === "ai" &&
+                            (pickerFor === m.id ? (
+                              <span
+                                role="group"
+                                aria-label="Add this reply to your deliverable"
+                                className="mt-2 inline-flex flex-wrap items-center gap-1 rounded-sm border border-hairline bg-raised p-1"
+                              >
+                                <span className="meta whitespace-nowrap px-1 text-ink-3">
+                                  Add to
+                                </span>
+                                {spec.fields.map((f) => (
+                                  <button
+                                    key={f.id}
+                                    type="button"
+                                    onClick={() => captureMessage(m, f)}
+                                    className="whitespace-nowrap rounded-sm px-2 py-1 text-[0.8rem] font-semibold text-ink transition-colors hover:bg-accent hover:text-on-accent"
+                                  >
+                                    {f.label}
+                                  </button>
+                                ))}
+                                <button
+                                  type="button"
+                                  onClick={() => setPickerFor(null)}
+                                  aria-label="Cancel adding to deliverable"
+                                  className="flex h-6 w-6 items-center justify-center rounded-sm text-ink-3 transition-colors hover:text-ink"
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setPickerFor(m.id)}
+                                className="mt-1.5 inline-flex min-h-[24px] items-center py-1 text-[0.78rem] font-semibold text-ink-3 transition-colors hover:text-accent"
+                              >
+                                + Add to a section
+                              </button>
+                            ))}
+                        </>
                       )
                     ) : (
                       <p className="mt-1 flex gap-1.5">
@@ -582,6 +750,7 @@ export default function Workbench() {
           <div className="flex-none border-t border-hairline bg-ground px-[clamp(1rem,2.5vw,1.5rem)] py-3">
             <div className="flex items-end gap-2 rounded-sm border border-hairline bg-raised p-2 focus-within:border-accent">
               <textarea
+                id="composer"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
@@ -671,8 +840,9 @@ export default function Workbench() {
 
           {deliverableEmpty && (
             <p className="mt-8 max-w-[44ch] text-[0.9rem] leading-relaxed text-ink-3">
-              This is what you&rsquo;ll hand in. Select any part of the
-              AI&rsquo;s reply to add it to a section — or type directly. You
+              This is what you&rsquo;ll hand in. Direct the AI, then use{" "}
+              <span className="font-semibold text-ink-2">Add to a section</span>{" "}
+              on its reply — or select part of it, or type here directly. You
               decide what&rsquo;s worth keeping.
             </p>
           )}
@@ -685,7 +855,7 @@ export default function Workbench() {
       {capture && (
         <div
           ref={captureRef}
-          role="menu"
+          role="group"
           aria-label="Add selection to your deliverable"
           className="fixed z-50 flex items-center gap-0.5 rounded-sm border border-hairline bg-raised p-1 shadow-layer animate-fadeUp"
           style={{ left: capture.x, top: capture.y - 10, transform: "translate(-50%, -100%)" }}
@@ -696,7 +866,6 @@ export default function Workbench() {
             <button
               key={f.id}
               type="button"
-              role="menuitem"
               onClick={() => captureInto(f)}
               className="whitespace-nowrap rounded-sm px-2 py-1 text-[0.8rem] font-semibold text-ink transition-colors hover:bg-accent hover:text-on-accent"
             >
@@ -716,6 +885,34 @@ export default function Workbench() {
 }
 
 /* ---------- editors ---------- */
+
+// A textarea that grows to fit its content, so a multi-sentence capture is
+// fully visible instead of clipped behind a one-line scroll. Height is set
+// after render (useEffect, not layout effect, to avoid the SSR warning); the
+// brief first-paint reflow is invisible for content that arrives post-mount
+// (captures, restored drafts, typing).
+function GrowText({
+  value,
+  className = "",
+  ...props
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { value: string }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      rows={1}
+      className={`resize-none overflow-hidden ${className}`}
+      {...props}
+    />
+  );
+}
 
 function ListEditor({
   label,
@@ -740,14 +937,13 @@ function ListEditor({
             aria-hidden
             className="mt-[0.9em] h-[5px] w-[5px] flex-none rounded-full bg-ink-3"
           />
-          <textarea
+          <GrowText
             value={item}
             onChange={(e) => onChange(i, e.target.value)}
             placeholder={placeholder}
             aria-label={`${label} — item ${i + 1}`}
-            rows={1}
             data-gramm="false"
-            className="min-h-0 flex-1 resize-none border-b border-hairline bg-transparent py-1.5 text-[0.95rem] leading-relaxed text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-accent"
+            className="min-h-0 flex-1 border-b border-hairline bg-transparent py-1.5 text-[0.95rem] leading-relaxed text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-accent"
           />
           <button
             type="button"
@@ -810,14 +1006,13 @@ function TableEditor({
                 <tr key={i} className="align-top">
                   {columns.map((c, ci) => (
                     <td key={c.id} className="border-b border-hairline py-1 pr-3">
-                      <textarea
+                      <GrowText
                         value={row[c.id] ?? ""}
                         onChange={(e) => onChange(i, c.id, e.target.value)}
                         placeholder={c.placeholder}
                         aria-label={`${c.label}, row ${i + 1}`}
-                        rows={1}
                         data-gramm="false"
-                        className={`min-h-0 w-full resize-none bg-transparent py-1 text-[0.92rem] leading-snug text-ink outline-none placeholder:text-ink-3 ${
+                        className={`min-h-0 w-full bg-transparent py-1 text-[0.92rem] leading-snug text-ink outline-none placeholder:text-ink-3 ${
                           ci === 0 ? "font-semibold" : ""
                         }`}
                         style={{ minWidth: ci === 0 ? "5rem" : "7rem" }}

@@ -184,6 +184,26 @@
     border-top: 1px solid var(--hairline);
   }
 
+  /* skip link — off-screen until focused, then pinned top-left. `fixed` so a
+     scroll/overflow container can never clip it. */
+  .skip-link {
+    position: fixed;
+    left: 0.75rem;
+    top: 0.65rem;
+    z-index: 60;
+    transform: translateY(-180%);
+    background: var(--accent);
+    color: var(--on-accent);
+    padding: 0.55em 1.1em;
+    border-radius: 2px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .skip-link:focus {
+    transform: translateY(0);
+  }
+
   /* capability register grid — collapses without losing the row rhythm */
   .caps-grid {
     display: grid;

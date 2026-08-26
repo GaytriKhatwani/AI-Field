@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useField } from "@/lib/store";
-import { Arrow } from "@/components/icons";
+import { Arrow, Back } from "@/components/icons";
 
 type Step = {
   key: "role" | "aiUsage" | "goal";
@@ -67,6 +67,10 @@ export default function Onboarding() {
     }
   }
 
+  function back() {
+    setI((n) => Math.max(0, n - 1));
+  }
+
   function skip() {
     saveOnboarding(picks, true);
     router.push("/field");
@@ -82,14 +86,25 @@ export default function Onboarding() {
           >
             AI&nbsp;Field
           </span>
-          <button
-            type="button"
-            onClick={skip}
-            className="btn--quiet inline-flex items-center gap-[0.5ch] border-b border-transparent hover:border-hairline"
-          >
-            Skip to your first rep
-            <Arrow width={14} />
-          </button>
+          <div className="flex items-center gap-5">
+            {i > 0 && (
+              <button
+                type="button"
+                onClick={back}
+                className="btn--quiet inline-flex items-center gap-[0.5ch]"
+              >
+                <Back /> Back
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={skip}
+              className="btn--quiet inline-flex items-center gap-[0.5ch] border-b border-transparent hover:border-hairline"
+            >
+              Skip to your first rep
+              <Arrow width={14} />
+            </button>
+          </div>
         </header>
 
         <div key={i} className="flex flex-1 flex-col justify-center py-12 animate-riseIn">
@@ -104,15 +119,20 @@ export default function Onboarding() {
             {step.aside}
           </p>
 
-          <ul className="mt-9 max-w-[34rem] list-none p-0">
+          <ul
+            role="radiogroup"
+            aria-label={step.prompt}
+            className="mt-9 max-w-[34rem] list-none p-0"
+          >
             {step.options.map((opt) => {
               const active = picks[step.key] === opt;
               return (
                 <li key={opt} className="border-t border-hairline last:border-b">
                   <button
                     type="button"
+                    role="radio"
                     onClick={() => choose(opt)}
-                    aria-pressed={active}
+                    aria-checked={active}
                     className="group flex w-full items-center gap-4 py-[0.95rem] text-left transition-transform duration-200 ease hover:translate-x-1.5"
                   >
                     <span
