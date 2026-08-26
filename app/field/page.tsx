@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useField } from "@/lib/store";
-import { getMission, MISSIONS } from "@/lib/missions";
+import { getMission, MISSIONS, FIRST_MISSION_ID } from "@/lib/missions";
+import { recommendNext } from "@/lib/progression/recommend";
 import type { Competency } from "@/lib/missions/types";
 import {
   COMPETENCY_ORDER,
@@ -34,11 +35,20 @@ export default function Field() {
     ? (lastDebrief?.practice ?? recommendation?.practice ?? gapCompetency(profile))
     : null;
 
+  // Prefer the judge-driven recommendation (just-finished debrief, then the
+  // durable one loaded from the backend). With neither stored, derive it: a
+  // brand-new operator gets the catalog's first mission; a returning one gets
+  // the deterministic recommender aimed at their gap — never a hardcoded id.
   const recommendedId =
     lastDebrief?.nextMissionId ??
     recommendation?.nextMissionId ??
-    (hasReps ? "the-bad-prompt" : "meeting-chaos");
-  const recommended = getMission(recommendedId) ?? getMission("meeting-chaos")!;
+    (hasReps
+      ? recommendNext(gap ?? gapCompetency(profile), completedIds)
+      : FIRST_MISSION_ID);
+  // Safe resolution — an unknown/stale id can never crash the Field: fall back
+  // to the first mission, and to the catalog head as a last resort.
+  const recommended =
+    getMission(recommendedId) ?? getMission(FIRST_MISSION_ID) ?? MISSIONS[0];
 
   const rest = MISSIONS.filter(
     (m) => m.id !== recommended.id && !completedIds.includes(m.id),
