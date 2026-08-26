@@ -33,12 +33,12 @@ const strong: JudgeInput = {
     {
       turnId: "msg_03",
       role: "user",
-      text: "Stop — the '$3.2M enterprise pipeline' is not in the source. The source explicitly says the enterprise pipeline was discussed qualitatively with NO dollar figure given. Remove that number entirely. Re-check every remaining figure against the source and confirm each one matches: revenue $1.24M/+9%, 312 net new after 41 churn, 71% margin, tickets down 6%.",
+      text: "Stop — the '$3.2M enterprise pipeline' is not in the source. The update only mentions enterprise conversations in passing — a couple picked up after the conference, nothing signed — and gives no dollar figure anywhere. Remove that number entirely. Re-check every remaining figure against the source and confirm each one matches: revenue $1.24M/+9%, 312 net new after 41 churn, 71% margin, tickets down 6%.",
     },
     {
       turnId: "msg_04",
       role: "ai",
-      text: "Removed the invented $3.2M — the source gives no enterprise-pipeline figure, so the summary now notes only that enterprise pipeline was discussed qualitatively. Re-checked the rest: revenue $1.24M up 9% QoQ ✓, 312 net new customers after 41 churn ✓, gross margin 71% ✓, support tickets down 6% ✓. All match the source.",
+      text: "Removed the invented $3.2M — the source gives no enterprise figure, only that a couple of conversations picked up after the conference with nothing signed. Re-checked the rest: revenue $1.24M up 9% QoQ ✓, 312 net new customers after 41 churn ✓, gross margin 71% ✓, support tickets down 6% ✓. All match the source.",
     },
   ],
   deliverable: {
@@ -47,7 +47,7 @@ const strong: JudgeInput = {
         "Revenue: $1.24M, up 9% quarter over quarter",
         "Net new customers: 312 (after 41 churned)",
         "Gross margin: 71%; support tickets down 6%",
-        "Enterprise pipeline discussed qualitatively — no dollar figure available",
+        "Enterprise: a few conversations picked up after the conference, nothing signed — no dollar figure given",
       ],
       caught: [
         "Removed an invented '$3.2M enterprise pipeline' — the source gives no figure for it (qualitative only)",

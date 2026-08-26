@@ -17,7 +17,7 @@ export const theBadPrompt: Mission = {
   availability: "available",
   briefing: {
     scenario:
-      "A teammate forwarded you a prompt they've been fighting with: \"write a product announcement.\" The AI keeps giving them generic, off-brand filler. They want the actual announcement — for a new scheduling feature, aimed at existing customers — and they want it to sound like your company, not a press-release generator.",
+      "Sam from marketing pings you: \"can you take a crack at this? I've been going in circles.\" Attached is the prompt they keep feeding the AI — just \"write a product announcement\" — and a run of drafts that all read like the same press-release filler. What they actually need is the announcement for shared team scheduling, going to existing customers, and it has to sound like us, not a launch-hype generator. Sam's note on how the company writes is in with the materials.",
     objective:
       "Direct the AI to a product announcement you'd be willing to send: specific to the feature, pitched to existing customers, in a plain confident voice.",
     constraints: [
@@ -30,15 +30,18 @@ export const theBadPrompt: Mission = {
   resources: [
     {
       id: "brand-note",
-      label: "Voice & feature note",
+      label: "Sam's brand + feature note",
       kind: "document",
       summary: "What the feature does and how the company sounds.",
-      content: `FEATURE: Shared team scheduling — teammates can see each other's availability
-and book shared time without the back-and-forth. Ships to all paid plans.
+      content: `From Sam's brand notes —
 
-VOICE: plain, specific, a little dry. We say what a thing does, not how excited
-we are about it. We never say "thrilled", "excited to announce", "game-changer",
-or "revolutionary". Short sentences.`,
+The feature: shared team scheduling. Teammates can see each other's
+availability and book shared time without the usual back-and-forth. It's
+on all paid plans.
+
+How we write: plain and specific, a little dry. We say what a thing does,
+not how we feel about it. Things we never say — "thrilled", "excited to
+announce", "game-changer", "revolutionary". Keep sentences short.`,
     },
   ],
   workbenchSystemContext:
@@ -121,7 +124,7 @@ export const dontTrustTheAI: Mission = {
   availability: "available",
   briefing: {
     scenario:
-      "You asked the AI to pull the key figures out of a quarterly update and summarise them for a stakeholder email. The summary reads confidently and looks finished. But you know from experience that a confident summary is exactly where a made-up number hides. Before this goes anywhere, you need to check it against the source.",
+      "You asked the AI to turn Dana's Q2 finance update into a short summary for a stakeholder email, and it came back reading clean and finished. It's going out under your name, though — and a summary that tidy is exactly where a number the source never gave can slip through. Check it against Dana's update before it goes anywhere.",
     objective:
       "Produce a summary you'd actually put your name on — every figure traced back to the source, every unsupported claim caught and removed.",
     constraints: [
@@ -133,15 +136,22 @@ export const dontTrustTheAI: Mission = {
   resources: [
     {
       id: "quarterly",
-      label: "Quarterly update (source)",
+      label: "Q2 update from Finance",
       kind: "document",
-      summary: "The real figures. Check the AI against this.",
-      content: `Q2 UPDATE (source of truth)
-- Revenue: $1.24M, up 9% quarter over quarter
-- New customers: 312 (net, after churn of 41)
-- Gross margin: 71%
-- Support tickets: down 6%
-- NOTE: enterprise pipeline discussed qualitatively; no dollar figure was given`,
+      summary: "Dana's quarterly recap — the figures you're checking against.",
+      content: `Subject: Q2 numbers before board prep
+From: Dana (Finance)
+
+Sharing where Q2 landed so we're all working off the same numbers.
+
+Revenue came in at $1.24M, up 9% on Q1. Net new customers: 312 — that's
+after the 41 who churned. Gross margin held at 71%. Support had a strong
+quarter too, ticket volume down 6% even with more accounts on the books.
+
+Enterprise is the one to watch — a couple of conversations picked up after
+the conference and one could be sizeable, but nothing's signed yet.
+
+Full deck to follow before the board meeting.`,
     },
   ],
   workbenchSystemContext:

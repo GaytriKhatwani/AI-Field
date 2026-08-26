@@ -110,8 +110,9 @@ export default function Briefing() {
           className="mt-[0.35em] h-[6px] w-[6px] flex-none rounded-full"
           style={{ background: "var(--warn)" }}
         />
-        This is a practice environment on a free AI tier. The material here is
-        synthetic — don&rsquo;t paste real confidential or personal data.
+        This is a practice environment; the materials here are synthetic. Use
+        the provided mission materials &mdash; avoid entering confidential,
+        proprietary, or sensitive information.
       </p>
     </main>
   );

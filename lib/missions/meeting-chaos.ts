@@ -23,12 +23,13 @@ present: Priya (PM), Marcus (eng), Dana (design), Sam (marketing), + Leo joined 
 - oh — Marcus said if we DO slip to the 29th, that's fine for eng but marketing needs
   2 weeks lead so they'd need to know by the 15th latest`;
 
-const SUPPORT_DOC = `TEAM CALENDAR — relevant dates (reference only)
-Sept 5  — design review (recurring)
-Sept 12 — finance sync (pricing usually discussed here)
-Sept 15 — proposed launch / go-no-go
-Sept 26 — company all-hands
-Sept 29 — fallback launch window`;
+const SUPPORT_DOC = `Team calendar — September
+
+Sept 5   design review (recurring)
+Sept 12  finance sync
+Sept 15  proposed launch — go/no-go
+Sept 26  company all-hands
+Sept 29  fallback launch window`;
 
 export const meetingChaos: Mission = {
   id: "meeting-chaos",
