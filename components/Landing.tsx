@@ -53,95 +53,211 @@ export function Landing() {
     }
   }
 
+  const cta = (
+    <div className="mt-[2.4rem] flex flex-wrap items-center gap-x-6 gap-y-3">
+      <button type="button" onClick={start} disabled={starting} className="btn">
+        {starting ? "Starting…" : "Try your first mission"}
+        {!starting && <Arrow className="arr" />}
+      </button>
+      <span className="meta">No signup · about 10 minutes</span>
+    </div>
+  );
+
   return (
-    <main className="mx-auto max-w-reading px-[clamp(1.25rem,5vw,3.25rem)] pb-24 pt-[clamp(1.5rem,4vw,2.5rem)]">
-      <header className="flex items-baseline justify-between">
-        <span
-          className="font-semibold uppercase text-ink"
-          style={{ fontSize: "0.82rem", letterSpacing: "0.2em" }}
-        >
-          AI&nbsp;Field
-        </span>
-        {ACCOUNT_LINKING_ENABLED && (
-          <button type="button" onClick={signIn} className="btn--quiet">
-            Sign in
-          </button>
-        )}
-      </header>
+    <main className="pb-24">
+      {/* HERO — a wide, asymmetric band: value on the left, a cropped fragment of
+          the real product (assignment → AI work → the read) on the right. The
+          band clips its own bleed so the page never scrolls sideways. */}
+      <section
+        aria-label="What AI Field is"
+        className="overflow-hidden border-b border-hairline"
+      >
+        <div className="mx-auto max-w-[92rem] px-[clamp(1.25rem,5vw,4rem)] pt-[clamp(1.5rem,4vw,2.5rem)]">
+          <header className="flex items-baseline justify-between">
+            <span
+              className="font-semibold uppercase text-ink"
+              style={{ fontSize: "0.82rem", letterSpacing: "0.2em" }}
+            >
+              AI&nbsp;Field
+            </span>
+            {ACCOUNT_LINKING_ENABLED && (
+              <button type="button" onClick={signIn} className="btn--quiet">
+                Sign in
+              </button>
+            )}
+          </header>
 
-      {/* HERO — passes the 5-second test: what is this / what will I do / why care */}
-      <section className="mt-[clamp(3rem,10vw,6.5rem)] animate-riseIn" aria-label="What AI Field is">
-        <h1 className="display text-ink" style={{ fontSize: "clamp(2.7rem,8vw,5rem)", maxWidth: "15ch" }}>
-          Get better at using AI for real work.
-        </h1>
-        <p className="mt-[1.6rem] max-w-[42ch] text-[clamp(1.1rem,2.6vw,1.35rem)] font-medium leading-[1.4] text-ink">
-          Take on a realistic work assignment, tackle it with a real AI, and get
-          an honest, specific read on how you did — and what to get sharper at next.
-        </p>
-        <div className="mt-[2.2rem] flex flex-wrap items-center gap-x-6 gap-y-3">
-          <button type="button" onClick={start} disabled={starting} className="btn">
-            {starting ? "Starting…" : "Try your first mission"}
-            {!starting && <Arrow className="arr" />}
-          </button>
-          <span className="meta">No signup · about 10 minutes</span>
+          <div className="grid items-center gap-x-[clamp(2rem,5vw,5rem)] gap-y-[clamp(3rem,7vw,4.5rem)] pb-[clamp(3rem,7vw,6rem)] pt-[clamp(2.5rem,7vw,5.5rem)] lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+            {/* Left — the pitch */}
+            <div className="max-w-[32rem] animate-riseIn">
+              <h1
+                className="display text-ink"
+                style={{ fontSize: "clamp(2.6rem,6vw,4.4rem)", maxWidth: "13ch" }}
+              >
+                Get better at using AI for real work.
+              </h1>
+              <p className="mt-[1.7rem] max-w-[40ch] text-[clamp(1.05rem,1.5vw,1.3rem)] font-medium leading-[1.45] text-ink">
+                Take on a realistic work assignment, tackle it with a real AI, and
+                get an honest, specific read on how you worked — and what to
+                sharpen next.
+              </p>
+              {cta}
+              {error && (
+                <p role="alert" className="mt-4 max-w-measure text-[0.9rem] text-warn">
+                  Couldn&rsquo;t start just now — check your connection and try again.
+                </p>
+              )}
+            </div>
+
+            {/* Right — the product, cropped and composed */}
+            <ProductScene />
+          </div>
         </div>
-        {error && (
-          <p role="alert" className="mt-4 max-w-measure text-[0.9rem] text-warn">
-            Couldn&rsquo;t start just now — check your connection and try again.
+      </section>
+
+      {/* Below the hero the page returns to an editorial reading width. */}
+      <div className="mx-auto max-w-reading px-[clamp(1.25rem,5vw,3.25rem)]">
+        {/* WHAT YOU'LL DO — concrete workplace assignments; the anti-course line */}
+        <section aria-label="What you'll do" className="max-w-measure pt-[clamp(3rem,7vw,5rem)]">
+          <h2 className="section-label mb-4">What you&rsquo;ll do</h2>
+          <p className="text-[1.05rem] leading-relaxed text-ink">
+            You get a real piece of work — a messy meeting to pull apart, a shaky
+            AI-drafted report, a brief that&rsquo;s missing half the details. You
+            handle it with a real AI: tell it what you need, push back on what it
+            gives you, and decide what&rsquo;s good enough to send.{" "}
+            <span className="font-semibold">
+              This isn&rsquo;t a course — no lessons, no prompt lists. You do the work.
+            </span>
           </p>
-        )}
-      </section>
+        </section>
 
-      <hr className="rule my-[clamp(2.75rem,7vw,4.5rem)]" />
+        <hr className="rule my-[clamp(2.75rem,7vw,4.5rem)]" />
 
-      {/* WHAT YOU'LL DO — concrete workplace assignment; the anti-course line */}
-      <section aria-label="What you'll do" className="max-w-measure">
-        <h2 className="section-label mb-4">What you&rsquo;ll do</h2>
-        <p className="text-[1.05rem] leading-relaxed text-ink">
-          You get a real piece of work — a messy meeting to sort out, a shaky
-          report, a brief that&rsquo;s missing half the details. You handle it with
-          a real AI: tell it what you need, push back on what it gives you, and
-          decide what&rsquo;s good enough to send.{" "}
-          <span className="font-semibold">
-            This isn&rsquo;t a course — no lessons, no prompt lists. You do the work.
-          </span>
-        </p>
-      </section>
+        {/* WHAT YOU GET — the payoff is the evidence-backed read, not a dashboard */}
+        <section aria-label="What you get">
+          <h2 className="section-label mb-4">What you get</h2>
+          <p className="max-w-measure text-[1.05rem] leading-relaxed text-ink">
+            Then you get an honest read on how you worked — specific, and backed by
+            what you actually did. Not a score. The kind of feedback a sharp
+            colleague would give you:
+          </p>
 
-      <hr className="rule my-[clamp(2.75rem,7vw,4.5rem)]" />
+          <ExampleRead />
+        </section>
 
-      {/* WHAT YOU GET — the payoff is the evidence-backed read, not a dashboard */}
-      <section aria-label="What you get">
-        <h2 className="section-label mb-4">What you get</h2>
-        <p className="max-w-measure text-[1.05rem] leading-relaxed text-ink">
-          Then you get an honest read on how you worked — specific, and backed by
-          what you actually did. Not a score. The kind of feedback a sharp
-          colleague would give you:
-        </p>
+        <hr className="rule my-[clamp(2.75rem,7vw,4.5rem)]" />
 
-        <ExampleRead />
-      </section>
-
-      <hr className="rule my-[clamp(2.75rem,7vw,4.5rem)]" />
-
-      {/* CLOSING — a real, anchored close */}
-      <section aria-label="Start" className="max-w-measure">
-        <h2 className="display text-ink" style={{ fontSize: "clamp(1.9rem,5.5vw,3rem)" }}>
-          See how you actually work with AI.
-        </h2>
-        <div className="mt-[1.8rem] flex flex-wrap items-center gap-x-6 gap-y-3">
-          <button type="button" onClick={start} disabled={starting} className="btn">
-            {starting ? "Starting…" : "Try your first mission"}
-            {!starting && <Arrow className="arr" />}
-          </button>
-          <span className="meta">No signup · about 10 minutes</span>
-        </div>
-      </section>
+        {/* CLOSING — a real, anchored close */}
+        <section aria-label="Start" className="max-w-measure">
+          <h2 className="display text-ink" style={{ fontSize: "clamp(1.9rem,5.5vw,3rem)" }}>
+            See how you actually work with AI.
+          </h2>
+          {cta}
+        </section>
+      </div>
     </main>
   );
 }
 
-// A static, illustrative example of the debrief read — the landing's strongest
+// The hero's right half: one composed, cropped view of the real loop — the messy
+// assignment, a sliver of directing the AI, and the evidence-backed read as the
+// sharp payoff in front. Not three cards: the notes and the exchange are raw,
+// bleeding fragments; only the read is a framed surface, lifted and in focus.
+// The story reveals in sequence (notes → direction → read) via staggered rise.
+function ProductScene() {
+  return (
+    <div className="relative w-full" aria-hidden>
+      {/* 1 — the assignment: real raw notes, dim, cropped by a bottom fade */}
+      <figure className="relative z-10 animate-fadeUp" style={{ animationDelay: "80ms" }}>
+        <figcaption className="meta mb-2 flex items-center gap-2 text-ink-3">
+          <span aria-hidden className="inline-block h-px w-5 bg-hairline" />
+          Raw meeting notes
+        </figcaption>
+        <pre
+          className="max-h-[8rem] overflow-hidden whitespace-pre-wrap font-mono text-[0.68rem] leading-[1.55] text-ink-3"
+          style={{
+            maskImage: "linear-gradient(to bottom, #000 44%, transparent)",
+            WebkitMaskImage: "linear-gradient(to bottom, #000 44%, transparent)",
+          }}
+        >
+{`PLANNING CALL — Q3 launch (45 min, half of it went sideways)
+present: Priya (PM), Marcus (eng), Dana (design), Sam (marketing), + Leo joined late
+
+- kicked off talking about the launch date. Priya wants Sept 15. Marcus pushed
+  back, said the API work isn't done, maybe 2 more weeks. left it as "target
+  15th, revisit Fri"
+- big debate about whether to ship the referral feature in v1. Marcus thinks
+  it's risky. Priya said cut it if it threatens the date. Nobody actually
+  decided?? felt decided but reading back my notes it wasn't`}
+        </pre>
+      </figure>
+
+      {/* 2 — directing the AI: a hint of the workbench, hairline-tethered */}
+      <div
+        className="relative z-20 mt-6 ml-8 hidden animate-fadeUp sm:ml-14 md:block"
+        style={{ animationDelay: "220ms" }}
+      >
+        <p className="meta mb-2.5 flex items-center gap-2 text-ink-3">
+          <span aria-hidden className="inline-block h-px w-5 bg-hairline" />
+          You direct the AI
+        </p>
+        <div className="space-y-2 border-l border-hairline pl-4">
+          <p className="text-[0.86rem] leading-snug text-ink">
+            <span className="meta mr-2 align-middle text-accent">You</span>
+            Use only these notes. Pull the real decisions, owners, and due dates —
+            and flag anything the notes don&rsquo;t actually say.
+          </p>
+          <p className="text-[0.86rem] leading-snug text-ink-2">
+            <span className="meta mr-2 align-middle">AI</span>
+            Summary from the notes only. Launch date: &ldquo;target Sept 15&rdquo;,
+            not committed…
+          </p>
+        </div>
+      </div>
+
+      {/* 3 — the read: the payoff, forward and in focus */}
+      <div
+        className="relative z-30 mt-7 max-w-[29rem] animate-riseIn rounded-sm border border-hairline bg-raised px-[clamp(1.15rem,2.2vw,1.75rem)] py-[clamp(1.25rem,2.2vw,1.6rem)] shadow-layer md:ml-16 lg:ml-28"
+        style={{ animationDelay: "360ms" }}
+      >
+        <p className="meta mb-5 flex items-baseline justify-between gap-4">
+          <span>Your read</span>
+          <span className="text-ink-3" style={{ letterSpacing: "0.14em" }}>
+            example
+          </span>
+        </p>
+        <dl className="m-0 space-y-4">
+          <div>
+            <dt className="section-label mb-1.5" style={{ color: "var(--accent)" }}>
+              What worked
+            </dt>
+            <dd className="m-0 text-[0.96rem] leading-relaxed text-ink">
+              You gave the AI the raw notes and told it to use only what they
+              support — so it worked from real details, not guesses.
+            </dd>
+          </div>
+          <div>
+            <dt className="section-label mb-1.5" style={{ color: "var(--warn)" }}>
+              What you missed
+            </dt>
+            <dd className="m-0 text-[0.96rem] leading-relaxed text-ink">
+              You let a due date the notes never gave slip through — an invented
+              commitment made it into the summary.
+            </dd>
+          </div>
+          <div>
+            <dt className="section-label mb-1.5">What to practice next</dt>
+            <dd className="m-0 text-[0.96rem] leading-relaxed text-ink">
+              Checking the AI&rsquo;s work before you rely on it.
+            </dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  );
+}
+
+// A static, illustrative example of the debrief read — the section's supporting
 // visual. It mirrors the real debrief's section labels and evidence-anchored
 // tone (NOT a profile dashboard); the cumulative capability record is a single
 // quiet line beneath it. Plainly labelled "example" so it's never mistaken for

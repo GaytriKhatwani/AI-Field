@@ -141,7 +141,12 @@ export default function Onboarding() {
         </header>
 
         <div key={i} className="flex flex-1 flex-col justify-center py-12 animate-riseIn">
-          <p className="section-label mb-4">Three quick questions</p>
+          <p className="section-label mb-2.5">Three quick questions</p>
+          {i === 0 && (
+            <p className="mb-5 max-w-[38ch] text-[0.95rem] leading-relaxed text-ink-2">
+              Just enough to tune your first assignment — skip any of it.
+            </p>
+          )}
           <h1
             className="display max-w-[16ch] text-ink"
             style={{ fontSize: "clamp(2.1rem,6vw,3.4rem)" }}
