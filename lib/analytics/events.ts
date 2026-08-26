@@ -10,6 +10,10 @@ import type { Band } from "../competencies";
 // free-text onboarding answers.
 
 export const EVENTS = {
+  // Activation layer: landing intent + post-value account conversion. Kept
+  // minimal on purpose — Get Started Clicked is the new funnel top; the Save
+  // Profile trio measures conversion. No broad homepage click tracking.
+  GET_STARTED_CLICKED: "Get Started Clicked",
   ONBOARDING_STARTED: "Onboarding Started",
   ONBOARDING_COMPLETED: "Onboarding Completed",
   MISSION_VIEWED: "Mission Viewed",
@@ -19,6 +23,9 @@ export const EVENTS = {
   DELIVERABLE_SUBMITTED: "Deliverable Submitted",
   EVALUATION_COMPLETED: "Evaluation Completed",
   NEXT_MISSION_CLICKED: "Next Mission Clicked",
+  SAVE_PROFILE_VIEWED: "Save Profile Viewed",
+  SAVE_PROFILE_CLICKED: "Save Profile Clicked",
+  SAVE_PROFILE_SKIPPED: "Save Profile Skipped",
 } as const;
 
 /** Every mission-scoped event carries these two. mission_version is per-event. */
@@ -26,6 +33,7 @@ type MissionScoped = { mission_id: string; mission_version: string };
 
 /** The property contract per event. Optional keys are OMITTED, never sent null. */
 export type EventProps = {
+  "Get Started Clicked": Record<string, never>; // landing CTA → first anon identity
   "Onboarding Started": Record<string, never>;
   "Onboarding Completed": {
     completed: boolean; // false = skipped
@@ -50,6 +58,9 @@ export type EventProps = {
     to_mission_id: string;
     practice_competency: Competency;
   };
+  "Save Profile Viewed": Record<string, never>; // first-debrief Save moment shown
+  "Save Profile Clicked": { auth_provider: string }; // "google"
+  "Save Profile Skipped": Record<string, never>; // chose "Not now"
 };
 
 export type EventName = keyof EventProps;
@@ -68,6 +79,7 @@ export const ALLOWED_PROPERTY_KEYS: ReadonlySet<string> = new Set([
   "bands",
   "from_mission_id",
   "to_mission_id",
+  "auth_provider",
 ]);
 
 /** Secondary signal: property keys that look like prohibited free-text/content. */

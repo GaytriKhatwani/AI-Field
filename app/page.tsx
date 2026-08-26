@@ -1,28 +1,31 @@
-"use client";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { Landing } from "@/components/Landing";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useField } from "@/lib/store";
+// Public entry gate. This route lives OUTSIDE the app/(app) group, so it never
+// mounts FieldProvider and never mints an anonymous user just for a visit.
+//
+//   no session      → render the Landing (the anon user is created on Start)
+//   session found   → skip the landing/FTUE and go straight in
+//                     (onboarded → /field, otherwise resume /onboarding)
+//
+// Reading cookies makes this dynamic; force-dynamic keeps it from being cached.
+export const dynamic = "force-dynamic";
 
-export default function Entry() {
-  const { hydrated, onboarded } = useField();
-  const router = useRouter();
+export default async function Entry() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  useEffect(() => {
-    if (!hydrated) return;
-    router.replace(onboarded ? "/field" : "/onboarding");
-  }, [hydrated, onboarded, router]);
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("onboarded")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    redirect(profile?.onboarded ? "/field" : "/onboarding");
+  }
 
-  return (
-    <main className="grid min-h-screen place-items-center">
-      <div
-        role="status"
-        aria-label="Loading"
-        className="meta animate-breathe"
-        style={{ color: "var(--ink-3)", letterSpacing: "0.2em" }}
-      >
-        AI&nbsp;Field
-      </div>
-    </main>
-  );
+  return <Landing />;
 }

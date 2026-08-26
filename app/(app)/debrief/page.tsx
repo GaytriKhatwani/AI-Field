@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState, type ReactNode, type CSSProperties } from "react";
+import { Suspense, useEffect, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useField } from "@/lib/store";
 import { getMission } from "@/lib/missions";
@@ -8,7 +8,8 @@ import { COMPETENCY_META, bandLabel } from "@/lib/competencies";
 import { Marker } from "@/components/CapabilityRegister";
 import { bandToState } from "@/lib/competencies";
 import { track, EVENTS } from "@/lib/analytics/client";
-import { Arrow, Back } from "@/components/icons";
+import { ACCOUNT_LINKING_ENABLED } from "@/lib/flags";
+import { Arrow, Back, GoogleG } from "@/components/icons";
 import type { Debrief } from "@/lib/debrief/types";
 
 type Deliverable = {
@@ -61,7 +62,7 @@ function DebriefInner() {
   const reviewAttemptId = params.get("attemptId");
   const isReview = !!reviewAttemptId;
 
-  const { hydrated, lastDebrief, completed } = useField();
+  const { hydrated, lastDebrief, completed, isAnonymous } = useField();
 
   // Review mode fetches a past attempt's debrief + submitted deliverable through
   // the idempotent return_existing path (no re-judge, no double-count).
@@ -140,6 +141,14 @@ function DebriefInner() {
   );
   const next = isReview ? null : getMission(d.nextMissionId);
   const mission = isReview ? getMission(review!.missionId) : null;
+
+  // The first-mission Save moment replaces the forward CTA on the live debrief of
+  // the user's FIRST rep, and only for a still-anonymous user (and only when the
+  // account-linking flag is on). Every later debrief keeps the normal next-rep
+  // CTA; the Field carries the quiet re-surface for anyone who chose "Not now".
+  // completed is refreshed before this page renders, so length === 1 is reliable.
+  const showSave =
+    !isReview && ACCOUNT_LINKING_ENABLED && isAnonymous && completed.length === 1;
 
   return (
     <main className="mx-auto max-w-reading px-[clamp(1.25rem,5vw,3.25rem)] pb-24 pt-[clamp(1.5rem,4.5vw,3.25rem)]">
@@ -398,6 +407,8 @@ function DebriefInner() {
             <Arrow className="arr" />
           </button>
         </Row>
+      ) : showSave ? (
+        <SaveMoment />
       ) : next ? (
         /* live: the gap resolves into the next assignment */
         <Row
@@ -456,6 +467,82 @@ function DebriefInner() {
         </Row>
       )}
     </main>
+  );
+}
+
+// The first-mission Save moment — inline at the tail of the first live debrief,
+// framed around preserving earned work (not "create an account"). Continue with
+// Google upgrades the anonymous user in place; "Not now" keeps the anonymous
+// progress and continues to the Field, where the offer re-surfaces quietly.
+function SaveMoment() {
+  const router = useRouter();
+  const { linkGoogle } = useField();
+  const [linking, setLinking] = useState(false);
+  const [error, setError] = useState(false);
+  const viewed = useRef(false);
+
+  useEffect(() => {
+    if (viewed.current) return; // once, even under StrictMode double-invoke
+    viewed.current = true;
+    track(EVENTS.SAVE_PROFILE_VIEWED, {});
+  }, []);
+
+  async function connect() {
+    if (linking) return;
+    setError(false);
+    setLinking(true);
+    track(EVENTS.SAVE_PROFILE_CLICKED, { auth_provider: "google" });
+    try {
+      await linkGoogle(); // redirects to Google on success (returns via /auth/callback)
+    } catch {
+      setError(true);
+      setLinking(false);
+    }
+  }
+
+  function skip() {
+    track(EVENTS.SAVE_PROFILE_SKIPPED, {});
+    router.push("/field");
+  }
+
+  return (
+    <Row
+      as="section"
+      aria-label="Keep your work"
+      className="animate-riseIn"
+      rail={<p className="meta">Keep your work</p>}
+    >
+      <p className="max-w-[40ch] text-[clamp(1.05rem,2.4vw,1.2rem)] font-medium leading-[1.45] text-ink">
+        Keep what you just earned.
+      </p>
+      <p className="mt-3 max-w-measure text-[1.02rem] leading-relaxed text-ink-2">
+        You&rsquo;ve finished your first assignment and got your read. Connect an
+        account to keep it — the assignment, the feedback, the record you&rsquo;ve
+        started, and your next rep — and get back to it from any device.
+      </p>
+      <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-3">
+        <button type="button" onClick={connect} disabled={linking} className="btn">
+          <span className="inline-grid place-items-center rounded-[3px] bg-white p-[3px]">
+            <GoogleG />
+          </span>
+          {linking ? "Connecting…" : "Continue with Google"}
+        </button>
+        <button type="button" onClick={skip} className="btn--quiet">
+          Not now
+        </button>
+      </div>
+      {error ? (
+        <p role="alert" className="mt-4 max-w-measure text-[0.9rem] leading-relaxed text-warn">
+          Couldn&rsquo;t connect that Google account — keep practicing, you can try
+          again from the Field.
+        </p>
+      ) : (
+        <p className="mt-4 max-w-measure text-[0.85rem] leading-relaxed text-ink-3">
+          It&rsquo;s all saved already — connecting just makes it reachable
+          anywhere, not only in this browser.
+        </p>
+      )}
+    </Row>
   );
 }
 

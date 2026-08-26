@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useField } from "@/lib/store";
 import { getMission, MISSIONS, FIRST_MISSION_ID } from "@/lib/missions";
@@ -15,11 +15,13 @@ import {
   bandToState,
 } from "@/lib/competencies";
 import { CapabilityRegister } from "@/components/CapabilityRegister";
+import { ACCOUNT_LINKING_ENABLED } from "@/lib/flags";
 import { Arrow, Chevron } from "@/components/icons";
 
 export default function Field() {
   const router = useRouter();
-  const { hydrated, profile, completed, recommendation, lastDebrief } = useField();
+  const { hydrated, profile, completed, recommendation, lastDebrief, isAnonymous } =
+    useField();
   const [recordOpen, setRecordOpen] = useState(false);
   const [openMission, setOpenMission] = useState<string | null>(null);
 
@@ -184,6 +186,9 @@ export default function Field() {
         </div>
       )}
 
+      {ACCOUNT_LINKING_ENABLED && <LinkErrorNote />}
+      {ACCOUNT_LINKING_ENABLED && isAnonymous && hasReps && <FieldSaveLine />}
+
       {/* the one next rep */}
       <section className="mt-[clamp(3rem,9vw,6rem)] max-w-[40ch] animate-riseIn" aria-label="Your next rep">
         <h1 className="display text-ink" style={{ fontSize: "clamp(2.7rem,8.5vw,5rem)" }}>
@@ -320,4 +325,108 @@ function topCompetencies(
   weights: Record<Competency, number>,
 ): Competency[] {
   return COMPETENCY_ORDER.filter((c) => weights[c] >= 0.9);
+}
+
+// Quiet note when the Google account-linking round-trip came back a failure
+// (the OAuth callback redirects to /field?link=error — e.g. that Google email
+// already belongs to another account; Supabase won't merge). Anonymous progress
+// is untouched. Reads the param client-side and cleans the URL so a refresh
+// doesn't re-show it.
+function LinkErrorNote() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("link") === "error") {
+        setShow(true);
+        params.delete("link");
+        const qs = params.toString();
+        window.history.replaceState(
+          null,
+          "",
+          window.location.pathname + (qs ? `?${qs}` : ""),
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  if (!show) return null;
+
+  return (
+    <div
+      role="alert"
+      className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-hairline pt-3 text-[0.82rem] text-warn"
+    >
+      <span>
+        Couldn&rsquo;t connect that Google account — it may already be linked to
+        another account. Your progress is safe; you can try again.
+      </span>
+      <button type="button" onClick={() => setShow(false)} className="btn--quiet ml-auto">
+        Dismiss
+      </button>
+    </div>
+  );
+}
+
+// Quiet, dismissible re-surface of the Save offer for an anonymous user with reps
+// (typically one who chose "Not now" at the first debrief). Honest framing: the
+// work is saved, just not reachable from another browser until an account links
+// it. Dismissal is remembered per-device; connecting upgrades in place.
+const SAVE_LINE_DISMISSED = "aifield.saveLineDismissed";
+
+function FieldSaveLine() {
+  const { linkGoogle } = useField();
+  // Start hidden; reveal only after confirming (client-side) it wasn't dismissed,
+  // so there's no flash before the localStorage check.
+  const [dismissed, setDismissed] = useState(true);
+  const [linking, setLinking] = useState(false);
+
+  useEffect(() => {
+    try {
+      setDismissed(localStorage.getItem(SAVE_LINE_DISMISSED) === "1");
+    } catch {
+      setDismissed(false);
+    }
+  }, []);
+
+  if (dismissed) return null;
+
+  async function connect() {
+    if (linking) return;
+    setLinking(true);
+    try {
+      await linkGoogle(); // redirects on success
+    } catch {
+      setLinking(false);
+    }
+  }
+
+  function dismiss() {
+    try {
+      localStorage.setItem(SAVE_LINE_DISMISSED, "1");
+    } catch {
+      /* ignore */
+    }
+    setDismissed(true);
+  }
+
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-hairline pt-3 text-[0.82rem] text-ink-3">
+      <span>Only reachable in this browser.</span>
+      <button
+        type="button"
+        onClick={connect}
+        disabled={linking}
+        className="btn--quiet inline-flex items-center gap-[0.5ch] text-accent"
+      >
+        {linking ? "Connecting…" : "Connect an account to keep it"}
+        <Arrow width={13} />
+      </button>
+      <button type="button" onClick={dismiss} className="btn--quiet ml-auto">
+        Dismiss
+      </button>
+    </div>
+  );
 }

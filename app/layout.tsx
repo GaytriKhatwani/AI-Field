@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Bricolage_Grotesque, Public_Sans } from "next/font/google";
-import { Providers } from "./providers";
 import { RouteFocus } from "@/components/RouteFocus";
 import "./globals.css";
 
@@ -32,14 +31,16 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`}>
       <body>
-        <Providers>
-          <RouteFocus />
-          {/* focus target for route changes; tabIndex -1 so it takes
-              programmatic focus without becoming a tab stop */}
-          <div id="main-content" tabIndex={-1} className="outline-none">
-            {children}
-          </div>
-        </Providers>
+        {/* RouteFocus + the focus target live in the ROOT layout so the public
+            landing gets them too. The FieldProvider (which mints the anonymous
+            user) lives one level down in app/(app)/layout.tsx, so viewing the
+            landing creates no anonymous account — the mint happens on Start. */}
+        <RouteFocus />
+        {/* focus target for route changes; tabIndex -1 so it takes
+            programmatic focus without becoming a tab stop */}
+        <div id="main-content" tabIndex={-1} className="outline-none">
+          {children}
+        </div>
       </body>
     </html>
   );

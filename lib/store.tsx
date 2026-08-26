@@ -48,6 +48,7 @@ export type Recommendation = {
 type FieldState = {
   hydrated: boolean;
   userId: string | null;
+  isAnonymous: boolean;
   onboarded: boolean;
   onboarding: OnboardingAnswers;
   profile: Profile;
@@ -61,6 +62,11 @@ type FieldContextValue = FieldState & {
   setLastDebrief: (d: Debrief) => void;
   refresh: () => Promise<void>;
   resetAll: () => Promise<void>;
+  // Upgrade the current anonymous user to a permanent Google account IN PLACE —
+  // same auth.users.id, so every attempt/evaluation/competency row stays attached
+  // (RLS unchanged). Kicks off the OAuth redirect; the round-trip returns via
+  // /auth/callback. Throws if the client is absent or Supabase rejects the link.
+  linkGoogle: () => Promise<void>;
 };
 
 const DEBRIEF_KEY = "ai-field-last-debrief";
@@ -68,6 +74,7 @@ const DEBRIEF_KEY = "ai-field-last-debrief";
 const DEFAULT: FieldState = {
   hydrated: false,
   userId: null,
+  isAnonymous: true,
   onboarded: false,
   onboarding: {},
   profile: { ...FRESH_PROFILE },
@@ -211,6 +218,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
         setState({
           hydrated: true,
           userId: user.id,
+          isAnonymous: user.is_anonymous ?? true,
           onboarded: !!profileRow?.onboarded,
           onboarding: {
             role: profileRow?.role ?? undefined,
@@ -295,6 +303,18 @@ export function FieldProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const linkGoogle = useCallback(async () => {
+    const supabase = supabaseRef.current;
+    if (!supabase) throw new Error("no supabase client");
+    // In-place identity upgrade: the anon user gains a Google identity, keeping
+    // the same id. Redirects to Google; returns through /auth/callback → /field.
+    const { error } = await supabase.auth.linkIdentity({
+      provider: "google",
+      options: { redirectTo: `${window.location.origin}/auth/callback?next=/field` },
+    });
+    if (error) throw error;
+  }, []);
+
   const resetAll = useCallback(async () => {
     try {
       sessionStorage.removeItem(DEBRIEF_KEY);
@@ -310,7 +330,7 @@ export function FieldProvider({ children }: { children: ReactNode }) {
 
   return (
     <FieldContext.Provider
-      value={{ ...state, saveOnboarding, setLastDebrief, refresh, resetAll }}
+      value={{ ...state, saveOnboarding, setLastDebrief, refresh, resetAll, linkGoogle }}
     >
       {children}
     </FieldContext.Provider>

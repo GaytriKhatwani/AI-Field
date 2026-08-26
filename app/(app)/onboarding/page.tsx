@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useField } from "@/lib/store";
+import { FIRST_MISSION_ID } from "@/lib/missions";
 import { track, EVENTS } from "@/lib/analytics/client";
 import { Arrow, Back } from "@/components/icons";
 
@@ -17,7 +18,7 @@ const STEPS: Step[] = [
   {
     key: "role",
     prompt: "What kind of work do you do?",
-    aside: "This flavours the missions and the language. It never changes how you're judged.",
+    aside: "This just tailors the missions and wording to you — it never changes how you're judged.",
     options: [
       "Marketing",
       "Operations",
@@ -89,7 +90,9 @@ export default function Onboarding() {
     if (last) {
       saveOnboarding(next, true);
       track(EVENTS.ONBOARDING_COMPLETED, onboardingCompletedProps(next, true));
-      router.push("/field");
+      // First-run flow goes straight into the first mission (Landing → FTUE →
+      // Meeting Chaos). The Field becomes the home base after the first debrief.
+      router.push(`/briefing/${FIRST_MISSION_ID}`);
     } else {
       // brief beat so the selection registers, then advance
       setTimeout(() => setI((n) => n + 1), 140);
@@ -103,7 +106,7 @@ export default function Onboarding() {
   function skip() {
     saveOnboarding(picks, true);
     track(EVENTS.ONBOARDING_COMPLETED, onboardingCompletedProps(picks, false));
-    router.push("/field");
+    router.push(`/briefing/${FIRST_MISSION_ID}`);
   }
 
   return (
@@ -131,14 +134,14 @@ export default function Onboarding() {
               onClick={skip}
               className="btn--quiet inline-flex items-center gap-[0.5ch] border-b border-transparent hover:border-hairline"
             >
-              Skip to your first rep
+              Skip to your first mission
               <Arrow width={14} />
             </button>
           </div>
         </header>
 
         <div key={i} className="flex flex-1 flex-col justify-center py-12 animate-riseIn">
-          <p className="section-label mb-4">Setting up your practice</p>
+          <p className="section-label mb-4">Three quick questions</p>
           <h1
             className="display max-w-[16ch] text-ink"
             style={{ fontSize: "clamp(2.1rem,6vw,3.4rem)" }}

@@ -15,6 +15,8 @@ function routeName(path: string): string {
   if (path.startsWith("/workbench")) return "Workbench";
   if (path.startsWith("/evaluating")) return "The examiner is reading your session";
   if (path.startsWith("/debrief")) return "Debrief";
+  if (path.startsWith("/auth/callback")) return "Signing you in";
+  if (path === "/") return "Welcome to AI Field";
   return "AI Field";
 }
 
