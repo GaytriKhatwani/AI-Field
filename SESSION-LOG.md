@@ -151,3 +151,45 @@ Walked onboarding→field→briefing→workbench(give-to-AI, real instrument, se
 - Held until after M2: making mission content real (CMS/uploads), hardcoded fallback ids, provisional progression-curve constants.
 - User-owned: CAPTCHA/Turnstile (Supabase dashboard) + Vercel deploy, still building.
 - Still owed: `DESIGN.md`, real-device mobile QA.
+
+---
+
+# Session — 2026-08-26 (frontend critique → harden → polish → audit)
+
+**Branch:** `m2-gates-and-a11y-hardening`. **Phase:** M2 gates already passed (prior commits `2145b91`/`1c4966e`/`3c8ace5`); this session was a full Impeccable-driven frontend quality pass over the whole loop. No product/spec/backend changes. Three commits, all pushed.
+
+## `/impeccable critique` — whole loop (35/40)
+Dual-agent (isolated design review + deterministic detector). Detector **clean on all routes**. Verdict: authored-for-this-product (numbers-never-leak enforced at the data layer; map-not-dashboard held structurally). Priority issues found: select-to-capture mouse-only, refresh-loses-work, streaming SR re-announce, title-only disabled submit, clipped deliverable cells. Snapshot: `.impeccable/critique/2026-08-26T09-14-10Z__ai-field-whole-loop.md`.
+
+## Harden + polish (commit `12afaaf`)
+- **Workbench keyboard capture (P1):** every AI reply now carries a focusable **"+ Add to a section"** picker (the select-to-capture mechanic was pointer-only). Both paths share `commitCapture`. Also fixes discoverability.
+- **Draft persistence (P1):** transcript + given resources + deliverable persist to `localStorage` (`aifield:wb:<mission>`), rehydrate on mount (idRef advanced past restored ids), clear on submit. Makes the "Your work is safe" promise real. Verified: reload restores everything.
+- **Streaming SR (P2):** `aria-busy={thinking}` on the transcript log so AT announces the settled reply, not every token.
+- **Empty-submit (P2):** removed the `title`-only disabled button; empty submit now reveals a discoverable, dismissible hint bar.
+- **GrowText (P3):** deliverable textareas auto-grow so multi-line captures aren't clipped.
+- Carried mission **constraints into the workbench** ("Working rules"); mobile default tab → instrument; capture toolbar `role=menu`→`role=group` (honest); onboarding **Back** nav + proper **radio** semantics.
+
+## Debrief baseline framing (commit `f91e9d4`)
+Critique open-question #3: a first rep read the same "held your ground" copy as a veteran plateau. When every band is still `not_shown` (`d.moves.every(m => m.before === "not_shown")`), the "What moved" section becomes **"Where you start"** with a starting-line lead; the zero-movement case gets "early reps often read quiet". Gated on band state, not rep count. Verified live in review mode against the existing first-rep debrief.
+
+## `/impeccable audit` — all routes (18/20) + fixes (commit `cc3f8b7`)
+Audit found no P0/P1 (detector clean; contrast passes AA). Fixed the P2/P3s:
+- **SPA route focus (P2):** new `components/RouteFocus.tsx` in the layout moves focus to `#main-content` and announces the surface on every client nav (SPA transitions otherwise left focus on the unmounted trigger). Verified: focus → `#main-content`, live region read "The Field".
+- **Touch targets (P2):** deliverable remove-×/add, give/ungive, workbench back → **44px** hit areas (measured 44×44) without enlarging glyphs.
+- **Focus-on-add (P1c):** "+ add"/"+ add row" focus the new field (guarded so a capture doesn't get hijacked). Verified.
+- **Reduced-motion (P2):** frozen "thinking" dots replaced by a visible "Thinking…" text via `motion-reduce` variants (confirmed emitted in compiled CSS).
+- **Contrast floors (P3):** pinned tested `--ink-3`≈4.87:1 / `--warn`≈4.78:1 ratios in a `globals.css` comment.
+
+**De-scoped, with reasons in the commit:** server-side root redirect (anon session is bootstrapped client-side, so a server component can't resolve onboarding on a first visit without moving auth server-side); skip-links on the reading routes (no persistent global nav to skip — route-focus covers the concern).
+
+## Verification & caveats
+- Verified live on the user-run dev server (desktop): keyboard capture end-to-end, persistence-across-reload, empty-submit hint, GrowText, onboarding Back+radio, route focus/announce, 44px targets, focus-on-add.
+- **Mobile viewport still not visually confirmable** — the automation environment clamps the CSS viewport at ~1600px (`resize_window` doesn't take), consistent with the prior sessions' note. Responsive `md:` classes are structurally unchanged.
+- Browser automation's synthetic clicks don't reliably fire React `onClick`; interactive fixes were verified via programmatic `.click()` + DOM/focus inspection instead.
+- All changes green on `tsc --noEmit` (used throughout, never `build`, per the standing dev-server caution). Project ESLint is unconfigured (not a gate).
+
+## Also this session (non-project)
+- Configured the user's Claude Code status line (`~/.claude/statusline-command.sh`): model+effort, context/5h/7d progress bars with reset times.
+
+## Still owed (unchanged)
+- `DESIGN.md` standalone record; real-device mobile QA. The "+ add doesn't focus" papercut is now fixed; the reading-route skip-links and server root-redirect remain consciously deferred.
