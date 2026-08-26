@@ -126,6 +126,11 @@ function DebriefInner() {
     return <Loading label={isReview ? "Opening this rep…" : undefined} />;
 
   const moved = d.moves.filter((m) => m.moved);
+  // A profile still entirely at not-yet-shown is a baseline read — the first rep,
+  // or an early one where nothing has crossed a band yet. It earns a warmer
+  // starting-line framing instead of the veteran-plateau "held your ground" copy,
+  // so a beginner's first debrief doesn't read as a failure to advance.
+  const atBaseline = d.moves.every((m) => m.before === "not_shown");
   const headerTitle = isReview
     ? (getMission(review!.missionId)?.title ?? "Mission")
     : (completed[0]?.title ?? "Mission");
@@ -254,8 +259,23 @@ function DebriefInner() {
 
       <hr className="rule my-[clamp(2.5rem,6vw,3.5rem)]" />
 
-      {/* capability movement — in words, no bars, no numbers */}
-      <Row as="section" aria-label="What moved" rail={<h2 className="section-label">What moved</h2>}>
+      {/* capability movement — in words, no bars, no numbers. A baseline read
+          (all still not-yet-shown) is framed as a starting line, not a plateau. */}
+      <Row
+        as="section"
+        aria-label={atBaseline ? "Where you start" : "What moved"}
+        rail={
+          <h2 className="section-label">
+            {atBaseline ? "Where you start" : "What moved"}
+          </h2>
+        }
+      >
+        {atBaseline && (
+          <p className="mb-5 max-w-measure text-[1.02rem] leading-relaxed text-ink">
+            Every capability still reads not-yet-shown. This rep sets the baseline
+            the bands climb from — a starting read, not a score to beat.
+          </p>
+        )}
         {moved.length > 0 ? (
           <ul className="m-0 list-none space-y-4 p-0">
             {moved.map((m) => (
@@ -274,6 +294,12 @@ function DebriefInner() {
               </li>
             ))}
           </ul>
+        ) : atBaseline ? (
+          <p className="max-w-measure text-[0.98rem] text-ink-2">
+            Nothing crossed into a new band yet — early reps often read quiet. The
+            bands begin to move as you stack reps; this one marks the baseline
+            they&rsquo;ll climb from.
+          </p>
         ) : (
           <p className="max-w-measure text-[0.98rem] text-ink-2">
             Nothing moved enough to change a band this time — the honest read is
