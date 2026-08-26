@@ -12,9 +12,43 @@ import type { Debrief, EvidenceMoment } from "./types";
 const GOOD_BANDS = new Set(["proficient", "strong"]);
 const GAP_BANDS = new Set(["not_shown", "emerging"]);
 
-function truncate(s: string, n = 160): string {
+// The turn text is raw model/operator content — often markdown — and the notes
+// are shown inline (newlines collapse to spaces), so strip formatting to plain,
+// scannable prose before display.
+function plainText(s: string): string {
+  return s
+    .replace(/```[\s\S]*?```/g, " ") // fenced code
+    .replace(/`([^`]+)`/g, "$1") // inline code
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "") // heading markers at line start
+    .replace(/#{2,}\s*/g, "") // stray ## left after newline-collapse
+    .replace(/\*\*([^*]+)\*\*/g, "$1") // bold
+    .replace(/(?<!\w)[*_]([^*_]+)[*_](?!\w)/g, "$1") // italic
+    .replace(/^\s*[-*+]\s+/gm, "") // bullet markers
+    .replace(/^\s*\d+[.)]\s+/gm, "") // numbered markers
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// The judge cites evidence by internal turn id in evidence_turn_ids, but it also
+// leaks those ids into its prose ("msg_03 gives…", "via attachment (evt_01)").
+// Scrub them so the reader never sees an internal reference.
+function scrubTurnIds(s: string): string {
+  const out = s
+    .replace(/\s*\((?:msg|evt)_\d+(?:\s*,\s*(?:msg|evt)_\d+)*\)/gi, "") // "(evt_01)", "(msg_02, msg_03)"
+    .replace(/\b(?:msg|evt)_\d+\b/gi, "that turn")
+    .replace(/\s+([.,;:])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
+// Truncate on a word boundary so a snippet never ends mid-word ("submitte…").
+function truncate(s: string, n = 150): string {
   const t = s.trim();
-  return t.length > n ? t.slice(0, n - 1).trimEnd() + "…" : t;
+  if (t.length <= n) return t;
+  const cut = t.slice(0, n);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > n * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd() + "…";
 }
 
 export function buildDebrief(args: {
@@ -53,8 +87,10 @@ export function buildDebrief(args: {
     sessionLine.push({
       turnId: firstId,
       who: resolved.who,
-      text: truncate(resolved.text),
-      note: truncate(ev.why, 180),
+      // Both cleaners run on both fields: turn text can carry an id and a note
+      // can carry markdown, so neither field is safe with only one pass.
+      text: truncate(scrubTurnIds(plainText(resolved.text)), 120),
+      note: truncate(plainText(scrubTurnIds(ev.why)), 170),
       tone,
     });
   }
