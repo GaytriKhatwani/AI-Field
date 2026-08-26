@@ -95,9 +95,10 @@ export function CapabilityRegister({
             <li key={comp} className="flex cap-cell">
               <button
                 type="button"
-                aria-current={isOpen ? "true" : undefined}
+                aria-expanded={isOpen}
+                aria-controls="cap-evidence"
                 onClick={() => setOpen(isOpen ? null : comp)}
-                className="w-full text-left bg-ground px-[1.05rem] pb-[1.15rem] pt-[1.1rem] transition-colors duration-150 hover:bg-raised aria-[current=true]:bg-raised flex flex-col gap-[0.55rem] cap-btn"
+                className="w-full text-left bg-ground px-[1.05rem] pb-[1.15rem] pt-[1.1rem] transition-colors duration-150 hover:bg-raised aria-[expanded=true]:bg-raised flex flex-col gap-[0.55rem] cap-btn"
               >
                 <span className="flex items-center gap-[0.6ch]">
                   <Marker kind={marker} gap={isGap} />
@@ -121,6 +122,7 @@ export function CapabilityRegister({
       </ul>
       {open && (
         <p
+          id="cap-evidence"
           aria-live="polite"
           className="mt-[1.05rem] max-w-measure rounded-sm border border-hairline bg-raised px-[1.05rem] py-[0.9rem] text-[0.9rem] text-ink-2 animate-fadeUp"
         >

@@ -93,7 +93,7 @@ export default function Evaluating() {
   if (errored) {
     return (
       <main className="mx-auto flex min-h-screen max-w-reading flex-col justify-center px-[clamp(1.25rem,5vw,3.25rem)] py-16">
-        <p className="section-label mb-5">The examiner hit a snag</p>
+        <p role="alert" className="section-label mb-5">The examiner hit a snag</p>
         <h1 className="display max-w-[16ch] text-ink" style={{ fontSize: "clamp(1.9rem,5vw,2.8rem)" }}>
           Grading didn&rsquo;t finish.
         </h1>
@@ -124,7 +124,9 @@ export default function Evaluating() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-reading flex-col justify-center px-[clamp(1.25rem,5vw,3.25rem)] py-16">
-      <p className="section-label mb-5">The examiner is reading your session</p>
+      <p role="status" className="section-label mb-5">
+        The examiner is reading your session
+      </p>
       <h1
         className="display max-w-[18ch] text-ink"
         style={{ fontSize: "clamp(2rem,5.5vw,3.2rem)" }}

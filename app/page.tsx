@@ -16,6 +16,8 @@ export default function Entry() {
   return (
     <main className="grid min-h-screen place-items-center">
       <div
+        role="status"
+        aria-label="Loading"
         className="meta animate-breathe"
         style={{ color: "var(--ink-3)", letterSpacing: "0.2em" }}
       >

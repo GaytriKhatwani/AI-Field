@@ -86,7 +86,12 @@ export default function Field() {
   if (!hydrated) {
     return (
       <main className="grid min-h-screen place-items-center">
-        <div className="meta animate-breathe" style={{ letterSpacing: "0.2em" }}>
+        <div
+          role="status"
+          aria-label="Loading"
+          className="meta animate-breathe"
+          style={{ letterSpacing: "0.2em" }}
+        >
           AI&nbsp;Field
         </div>
       </main>
