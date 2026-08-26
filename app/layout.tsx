@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Bricolage_Grotesque, Public_Sans } from "next/font/google";
 import { Providers } from "./providers";
+import { RouteFocus } from "@/components/RouteFocus";
 import "./globals.css";
 
 const display = Bricolage_Grotesque({
@@ -31,7 +32,14 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`}>
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          <RouteFocus />
+          {/* focus target for route changes; tabIndex -1 so it takes
+              programmatic focus without becoming a tab stop */}
+          <div id="main-content" tabIndex={-1} className="outline-none">
+            {children}
+          </div>
+        </Providers>
       </body>
     </html>
   );

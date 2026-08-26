@@ -412,7 +412,7 @@ export default function Workbench() {
           type="button"
           onClick={() => router.push("/field")}
           aria-label="Leave the workbench"
-          className="-ml-1.5 flex h-9 w-9 flex-none items-center justify-center text-ink-3 transition-colors hover:text-accent"
+          className="-ml-2.5 flex h-11 w-11 flex-none items-center justify-center text-ink-3 transition-colors hover:text-accent"
         >
           <Back />
         </button>
@@ -603,7 +603,7 @@ export default function Workbench() {
                         onClick={() => ungiveResource(r.id)}
                         aria-label={`Take back ${r.label} from the AI`}
                         title="Take it back"
-                        className="group/give flex min-h-[24px] flex-none items-center gap-[0.5ch] whitespace-nowrap rounded-sm px-1.5 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.09em] transition-colors hover:text-ink"
+                        className="group/give flex min-h-[44px] flex-none items-center gap-[0.5ch] whitespace-nowrap rounded-sm px-1.5 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.09em] transition-colors hover:text-ink"
                         style={{ color: "var(--good)" }}
                       >
                         <Check width={12} height={10} />
@@ -615,7 +615,7 @@ export default function Workbench() {
                         type="button"
                         onClick={() => giveResource(r.id)}
                         className="btn btn--ghost flex-none"
-                        style={{ padding: "0.5em 0.85em", fontSize: "0.8rem", minHeight: "24px" }}
+                        style={{ padding: "0.5em 0.85em", fontSize: "0.8rem", minHeight: "44px" }}
                       >
                         Give to the AI
                       </button>
@@ -725,15 +725,24 @@ export default function Workbench() {
                         </>
                       )
                     ) : (
-                      <p className="mt-1 flex gap-1.5">
+                      <p className="mt-1 flex items-center gap-1.5">
                         <span className="sr-only" role="status">
                           The AI is responding…
+                        </span>
+                        {/* reduced motion freezes the pulse, so a visible text
+                            cue replaces the dots — sighted users still get a
+                            "working" signal, not three static dots */}
+                        <span
+                          aria-hidden
+                          className="hidden text-[0.82rem] italic text-ink-3 motion-reduce:inline"
+                        >
+                          Thinking…
                         </span>
                         {[0, 1, 2].map((i) => (
                           <span
                             key={i}
                             aria-hidden
-                            className="h-[6px] w-[6px] rounded-full bg-ink-3 animate-breathe"
+                            className="h-[6px] w-[6px] rounded-full bg-ink-3 animate-breathe motion-reduce:hidden"
                             style={{ animationDelay: `${i * 0.18}s` }}
                           />
                         ))}
@@ -929,10 +938,21 @@ function ListEditor({
   onAdd: () => void;
   onRemove: (i: number) => void;
 }) {
+  // Focus the field created by an explicit "+ add" (not one landed by a capture,
+  // which manages its own focus) so a keyboard user can type straight away.
+  const listRef = useRef<HTMLDivElement>(null);
+  const pendingFocus = useRef(false);
+  useEffect(() => {
+    if (!pendingFocus.current) return;
+    pendingFocus.current = false;
+    const areas = listRef.current?.querySelectorAll("textarea");
+    areas?.[areas.length - 1]?.focus();
+  }, [items.length]);
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" ref={listRef}>
       {items.map((item, i) => (
-        <div key={i} className="flex items-start gap-2">
+        <div key={i} className="flex items-start gap-1">
           <span
             aria-hidden
             className="mt-[0.9em] h-[5px] w-[5px] flex-none rounded-full bg-ink-3"
@@ -949,7 +969,7 @@ function ListEditor({
             type="button"
             onClick={() => onRemove(i)}
             aria-label="Remove"
-            className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center text-ink-3 transition-colors hover:text-ink"
+            className="-mr-2 flex h-11 w-11 flex-none items-center justify-center text-ink-3 transition-colors hover:text-ink"
           >
             ×
           </button>
@@ -957,8 +977,11 @@ function ListEditor({
       ))}
       <button
         type="button"
-        onClick={onAdd}
-        className="inline-flex min-h-[24px] items-center py-1 text-[0.82rem] font-semibold text-ink-3 transition-colors hover:text-accent"
+        onClick={() => {
+          pendingFocus.current = true;
+          onAdd();
+        }}
+        className="inline-flex min-h-[44px] items-center py-1 text-[0.82rem] font-semibold text-ink-3 transition-colors hover:text-accent"
       >
         + add
       </button>
@@ -979,8 +1002,20 @@ function TableEditor({
   onAdd: () => void;
   onRemove: (i: number) => void;
 }) {
+  // Focus the first cell of a row created by "+ add row" (not one landed by a
+  // capture, which manages its own focus).
+  const tableRef = useRef<HTMLDivElement>(null);
+  const pendingFocus = useRef(false);
+  useEffect(() => {
+    if (!pendingFocus.current) return;
+    pendingFocus.current = false;
+    tableRef.current
+      ?.querySelector<HTMLTextAreaElement>("tbody tr:last-child textarea")
+      ?.focus();
+  }, [rows.length]);
+
   return (
-    <div>
+    <div ref={tableRef}>
       {rows.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left">
@@ -996,7 +1031,7 @@ function TableEditor({
                     {c.label}
                   </th>
                 ))}
-                <th scope="col" className="w-6 border-b border-hairline">
+                <th scope="col" className="w-11 border-b border-hairline">
                   <span className="sr-only">Remove row</span>
                 </th>
               </tr>
@@ -1019,12 +1054,12 @@ function TableEditor({
                       />
                     </td>
                   ))}
-                  <td className="border-b border-hairline py-1 text-center">
+                  <td className="border-b border-hairline text-center">
                     <button
                       type="button"
                       onClick={() => onRemove(i)}
                       aria-label="Remove row"
-                      className="mx-auto flex h-6 w-6 items-center justify-center text-ink-3 transition-colors hover:text-ink"
+                      className="mx-auto flex h-11 w-11 items-center justify-center text-ink-3 transition-colors hover:text-ink"
                     >
                       ×
                     </button>
@@ -1037,8 +1072,11 @@ function TableEditor({
       )}
       <button
         type="button"
-        onClick={onAdd}
-        className="mt-2 inline-flex min-h-[24px] items-center py-1 text-[0.82rem] font-semibold text-ink-3 transition-colors hover:text-accent"
+        onClick={() => {
+          pendingFocus.current = true;
+          onAdd();
+        }}
+        className="mt-2 inline-flex min-h-[44px] items-center py-1 text-[0.82rem] font-semibold text-ink-3 transition-colors hover:text-accent"
       >
         + add row
       </button>
