@@ -431,17 +431,23 @@ export default function Workbench() {
         ))}
       </div>
 
-      {/* working regions */}
-      <div className="grid min-h-0 flex-1 md:grid-cols-[minmax(0,0.72fr)_minmax(0,1fr)]">
+      {/* working regions — grid-rows-1 bounds each column to the row height so
+          they scroll internally instead of growing past the viewport */}
+      <div className="grid min-h-0 flex-1 grid-rows-1 md:grid-cols-[minmax(0,0.72fr)_minmax(0,1fr)]">
         {/* INSTRUMENT column */}
         <section
           id="instrument-panel"
-          className={`min-h-0 flex-col overflow-y-auto border-hairline px-[clamp(1rem,2.5vw,1.5rem)] py-5 md:flex md:border-r ${
+          className={`min-h-0 flex-col border-hairline md:flex md:border-r ${
             mode === "instrument" ? "flex" : "hidden md:flex"
           }`}
           aria-label="Resources and the AI instrument"
-          onScroll={() => capture && setCapture(null)}
         >
+          {/* scroll region: resources + transcript scroll here, above the fixed
+              composer footer — so a reply never renders on both sides of it */}
+          <div
+            className="min-h-0 flex-1 overflow-y-auto px-[clamp(1rem,2.5vw,1.5rem)] py-5"
+            onScroll={() => capture && setCapture(null)}
+          >
           {/* resources */}
           <h2 className="section-label mb-4">Resources</h2>
           <ul className="m-0 list-none space-y-2 p-0">
@@ -570,9 +576,10 @@ export default function Workbench() {
               </ol>
             )}
           </div>
+          </div>
 
-          {/* composer */}
-          <div className="sticky bottom-0 mt-4 bg-ground pt-1">
+          {/* composer — a fixed footer; the transcript scrolls above it */}
+          <div className="flex-none border-t border-hairline bg-ground px-[clamp(1rem,2.5vw,1.5rem)] py-3">
             <div className="flex items-end gap-2 rounded-sm border border-hairline bg-raised p-2 focus-within:border-accent">
               <textarea
                 value={draft}
