@@ -36,6 +36,10 @@ export function initAnalytics(): void {
     track_pageview: false,
     record_sessions_percent: 0,
     ip: false, // no IP/geolocation collection
+    // Controlled MVP cohort: measure the funnel even for Do-Not-Track browsers
+    // (analytics is anonymous + metadata-only). Revisit with the consent work
+    // before broader/public exposure — see ANALYTICS.md launch checklist.
+    ignore_dnt: true,
     persistence: "localStorage",
     ...(API_HOST ? { api_host: API_HOST } : {}),
     debug: isDev,
@@ -109,8 +113,12 @@ function validateProps(event: string, p: Record<string, unknown>): void {
 }
 
 function logEvent(event: string, p: Record<string, unknown>, status: string): void {
-  // Props are already allowlist-constrained, so this never prints prohibited content.
-  console.info(`[analytics] ${status.toUpperCase()} · ${event}`, { user: currentUserId, ...p });
+  // Props are already allowlist-constrained, so this never prints prohibited
+  // content. Inlined as text (not a console object) so the full event is legible
+  // in log readers during the correctness pass.
+  console.info(
+    `[analytics] ${status.toUpperCase()} · ${event} · user=${currentUserId} · ${JSON.stringify(p)}`,
+  );
 }
 
 // -- Evaluation Completed dedup (localStorage) ------------------------------

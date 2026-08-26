@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getMission, missionVersion } from "@/lib/missions";
 import type { Competency } from "@/lib/missions/types";
@@ -14,16 +14,20 @@ export default function Briefing() {
   const router = useRouter();
   const mission = getMission(params.missionId);
   const { hydrated, userId } = useField();
+  const viewedRef = useRef<string | null>(null);
 
-  // Mission Viewed — once the briefing renders, after identity has resolved.
+  // Mission Viewed — once the briefing renders, after identity has resolved. The
+  // ref keyed by mission id makes it fire exactly once per mission even under
+  // React StrictMode's dev double-invoke (a genuine re-navigation remounts with
+  // a fresh ref, so a real re-view still counts).
   useEffect(() => {
-    if (hydrated && userId && mission) {
+    if (hydrated && userId && mission && viewedRef.current !== mission.id) {
+      viewedRef.current = mission.id;
       track(EVENTS.MISSION_VIEWED, {
         mission_id: mission.id,
         mission_version: missionVersion(mission),
       });
     }
-    // fire once per viewed mission
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, userId, mission?.id]);
 

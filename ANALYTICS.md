@@ -104,6 +104,9 @@ pollute the real tester cohort.
 
 - Privacy/consent requirements must be revisited before public/EU exposure (not
   built as legal/privacy infrastructure for this controlled MVP).
+- **`ignore_dnt: true` is set** so the controlled MVP cohort is measured even on
+  Do-Not-Track browsers (analytics is anonymous + metadata-only). Reconsider
+  honouring DNT — or gate it behind consent — before broader/public exposure.
 - Confirm data-residency `api_host` matches the real project.
 
 ## Out of scope (do not add in this slice)
