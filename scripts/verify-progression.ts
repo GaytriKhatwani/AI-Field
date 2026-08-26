@@ -4,7 +4,7 @@
 // (The real-LLM discrimination gate — that the judge PRODUCES these bands — is a
 // separate step and needs a Gemini key.)
 
-import { FRESH_PROFILE, scoreToBand } from "../lib/competencies";
+import { FRESH_PROFILE, scoreToBand, BAND_SCALE } from "../lib/competencies";
 import { updateProfile } from "../lib/progression/update";
 import { recommendNext } from "../lib/progression/recommend";
 import { meetingChaos } from "../lib/missions/meeting-chaos";
@@ -14,6 +14,21 @@ let failures = 0;
 function check(name: string, cond: boolean) {
   console.log(`${cond ? "  ok  " : "FAIL  "} ${name}`);
   if (!cond) failures++;
+}
+
+// INVARIANT: the one canonical band scale can't drift — every band's blend
+// target must fall inside its own display range, and mapping that target back
+// through scoreToBand must return the same band. If this fails, a judged band
+// could silently show as a different band on the profile.
+for (const spec of BAND_SCALE) {
+  check(
+    `band "${spec.band}" target ${spec.target} inside [${spec.min},${spec.max}]`,
+    spec.target >= spec.min && spec.target <= spec.max,
+  );
+  check(
+    `band "${spec.band}" round-trips (scoreToBand(${spec.target}) === "${spec.band}")`,
+    scoreToBand(spec.target) === spec.band,
+  );
 }
 
 const weights = meetingChaos.competencyWeights;
@@ -47,8 +62,11 @@ for (const c of ["context", "direction", "iteration", "verification", "synthesis
   check(`strong > weak on ${c}`, s.profile[c] > w.profile[c]);
 }
 
-// Bands must visibly differ where it matters most.
-check("strong direction reaches at least developing", scoreToBand(s.profile.direction) !== "not_shown" && s.profile.direction >= 45);
+// Bands must visibly differ where it matters most. Direction is weight-1 in
+// Meeting Chaos and judged "strong" here — with the canonical scale a highly-
+// weighted strong rep must actually REACH the strong band (the old anchors let
+// it top out at proficient, contradicting the judge).
+check("strong direction reaches the strong band", scoreToBand(s.profile.direction) === "strong");
 check("weak context stays not_shown", scoreToBand(w.profile.context) === "not_shown");
 
 // Recommendation targets the named gap deterministically.

@@ -4,6 +4,7 @@ import {
   Profile,
   scoreToBand,
   COMPETENCY_ORDER,
+  BAND_TARGET,
 } from "../competencies";
 import type { CompetencyEvidence } from "../judge/types";
 
@@ -12,17 +13,9 @@ import type { CompetencyEvidence } from "../judge/types";
 // by how much the mission emphasised each competency. Raw evaluation is stored
 // separately (see /api/evaluate) so this is fully recomputable.
 //
-// TUNABLES decided at the M1 discrimination gate (SPEC): the BAND_TARGET anchors,
-// the blend curve, and ALLOW_REGRESSION. These are deliberately in one place.
-
-/** Internal 0–100 anchor for each band. Blending pulls a bar toward these. */
-export const BAND_TARGET: Record<Band, number> = {
-  not_shown: 0,
-  emerging: 25,
-  developing: 45,
-  proficient: 68,
-  strong: 88,
-};
+// TUNABLES decided at the M1 discrimination gate (SPEC): the band anchors (now
+// BAND_TARGET, owned by the canonical BAND_SCALE in ../competencies so display
+// range and blend target can't drift), the blend curve, and ALLOW_REGRESSION.
 
 /**
  * Whether a single weak attempt may LOWER a bar the operator previously earned.
