@@ -2,9 +2,10 @@ import type { Mission } from "./types";
 
 // Missions 2–4. Authored as real, playable content so the practice loop is
 // walkable through the one generic workbench. They run on the SAME real examiner
-// as Meeting Chaos (lib/ai/provider.ts) — nothing here is mocked. What's deferred
-// (M2) is their judge tuning / discrimination gate, so their scoring is real but
-// not yet proven to discriminate strong from weak. See SPEC.md.
+// as Meeting Chaos (lib/ai/provider.ts) — nothing here is mocked. M2 DONE: each
+// has passed its discrimination gate (strong vs weak transcripts diverge in the
+// expected direction on the real judge) — see scripts/gate-the-bad-prompt.ts,
+// gate-the-brief.ts, gate-dont-trust-the-ai.ts, run together via gate-catalog.ts.
 
 export const theBadPrompt: Mission = {
   id: "the-bad-prompt",

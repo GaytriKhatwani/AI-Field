@@ -131,7 +131,7 @@ The five durable skills (the "Operator Profile"): **Context, Direction, Iteratio
 
 ## Out of Scope
 
-- Missions 2–4 (The Bad Prompt, The Brief, Don't Trust the AI) — not built until the gate passes.
+- Missions 2–4 (The Bad Prompt, The Brief, Don't Trust the AI) — DONE in M2 (built + each passed its own discrimination gate; see `scripts/gate-catalog.ts`). Out of scope for *this* M1 spec.
 - Account linking / OAuth / magic links / account management / recovery UI.
 - Content CMS, admin panel, authoring tools.
 - Social features, leaderboards, notifications, teams/orgs.
