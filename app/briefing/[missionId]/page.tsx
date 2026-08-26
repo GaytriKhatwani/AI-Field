@@ -1,15 +1,31 @@
 "use client";
 
+import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { getMission } from "@/lib/missions";
+import { getMission, missionVersion } from "@/lib/missions";
 import type { Competency } from "@/lib/missions/types";
 import { COMPETENCY_ORDER, COMPETENCY_META } from "@/lib/competencies";
+import { useField } from "@/lib/store";
+import { track, EVENTS } from "@/lib/analytics/client";
 import { Arrow, Back } from "@/components/icons";
 
 export default function Briefing() {
   const params = useParams<{ missionId: string }>();
   const router = useRouter();
   const mission = getMission(params.missionId);
+  const { hydrated, userId } = useField();
+
+  // Mission Viewed — once the briefing renders, after identity has resolved.
+  useEffect(() => {
+    if (hydrated && userId && mission) {
+      track(EVENTS.MISSION_VIEWED, {
+        mission_id: mission.id,
+        mission_version: missionVersion(mission),
+      });
+    }
+    // fire once per viewed mission
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, userId, mission?.id]);
 
   if (!mission) {
     return (
@@ -95,7 +111,13 @@ export default function Briefing() {
 
         <button
           type="button"
-          onClick={() => router.push(`/workbench/${mission.id}`)}
+          onClick={() => {
+            track(EVENTS.MISSION_STARTED, {
+              mission_id: mission.id,
+              mission_version: missionVersion(mission),
+            });
+            router.push(`/workbench/${mission.id}`);
+          }}
           className="btn"
           style={{ padding: "1em 1.9em", fontSize: "1.02rem" }}
         >

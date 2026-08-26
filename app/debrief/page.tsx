@@ -7,6 +7,7 @@ import { getMission } from "@/lib/missions";
 import { COMPETENCY_META, bandLabel } from "@/lib/competencies";
 import { Marker } from "@/components/CapabilityRegister";
 import { bandToState } from "@/lib/competencies";
+import { track, EVENTS } from "@/lib/analytics/client";
 import { Arrow, Back } from "@/components/icons";
 import type { Debrief } from "@/lib/debrief/types";
 
@@ -423,7 +424,19 @@ function DebriefInner() {
           </p>
           <button
             type="button"
-            onClick={() => router.push(`/briefing/${next.id}`)}
+            onClick={() => {
+              // Next Mission Clicked — intent to continue from the debrief. from
+              // is the just-completed rep (most recent evaluated attempt).
+              const fromId = completed[0]?.missionId;
+              if (fromId) {
+                track(EVENTS.NEXT_MISSION_CLICKED, {
+                  from_mission_id: fromId,
+                  to_mission_id: next.id,
+                  practice_competency: d.practice,
+                });
+              }
+              router.push(`/briefing/${next.id}`);
+            }}
             className="btn mt-7"
           >
             Begin {next.title}

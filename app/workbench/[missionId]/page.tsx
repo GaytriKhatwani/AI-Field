@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { getMission } from "@/lib/missions";
+import { getMission, missionVersion } from "@/lib/missions";
 import type { DeliverableField } from "@/lib/missions/types";
+import { track, EVENTS } from "@/lib/analytics/client";
 import { Arrow, Back, Check } from "@/components/icons";
 
 const HARD_CEILING = 12;
@@ -182,6 +183,15 @@ export default function Workbench() {
     Object.values(deliverable.tables).every((v) => v.length === 0);
 
   function giveResource(id: string) {
+    if (given.includes(id)) return; // already given — don't re-track or re-add
+    // Resource Attached: attempt_id omitted entirely when no attempt exists yet
+    // (materials can be given before the first message creates the attempt).
+    track(EVENTS.RESOURCE_ATTACHED, {
+      mission_id: mission!.id,
+      mission_version: missionVersion(mission!),
+      resource_id: id,
+      ...(attemptId ? { attempt_id: attemptId } : {}),
+    });
     setGiven((g) => (g.includes(id) ? g : [...g, id]));
   }
 
@@ -224,6 +234,19 @@ export default function Workbench() {
         return;
       }
 
+      // Workbench Message Sent — only after the route accepted the turn. The
+      // attempt exists now (created lazily server-side; id comes back on the
+      // header for the first message). turn_index is this user turn's number.
+      const aid = attemptId ?? hdr;
+      if (aid) {
+        track(EVENTS.WORKBENCH_MESSAGE_SENT, {
+          mission_id: mission!.id,
+          mission_version: missionVersion(mission!),
+          attempt_id: aid,
+          turn_index: userTurns + 1,
+        });
+      }
+
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let acc = "";
@@ -262,6 +285,13 @@ export default function Workbench() {
         setSubmitting(false);
         return;
       }
+      // Deliverable Submitted — only after /api/submit succeeded (the commitment
+      // point), carrying the now-canonical attempt id.
+      track(EVENTS.DELIVERABLE_SUBMITTED, {
+        mission_id: mission!.id,
+        mission_version: missionVersion(mission!),
+        attempt_id: id,
+      });
       // handed in — the draft is now the server's; drop the local copy so a
       // later visit doesn't rehydrate a submitted, uneditable attempt.
       try {

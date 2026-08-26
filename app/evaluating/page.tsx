@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useField } from "@/lib/store";
+import { getMission, missionVersion } from "@/lib/missions";
+import { COMPETENCY_ORDER, type Band } from "@/lib/competencies";
+import type { Competency } from "@/lib/missions/types";
+import type { CompetencyMove } from "@/lib/progression/update";
+import { track, EVENTS } from "@/lib/analytics/client";
 
 const READING = [
   "How you directed the AI",
@@ -73,6 +78,26 @@ export default function Evaluating() {
 
         const data = await res.json().catch(() => null);
         if (data?.debrief) {
+          // Evaluation Completed — the loop closed. The wrapper dedupes this per
+          // attempt (localStorage + $insert_id), so an extra poll observation of
+          // the same evaluated result never double-fires.
+          const mission =
+            typeof data.missionId === "string" ? getMission(data.missionId) : undefined;
+          if (attemptId && mission) {
+            const bands = Object.fromEntries(
+              COMPETENCY_ORDER.map((c) => [c, "not_shown"]),
+            ) as Record<Competency, Band>;
+            for (const mv of (data.debrief.moves ?? []) as CompetencyMove[]) {
+              bands[mv.competency] = mv.after;
+            }
+            track(EVENTS.EVALUATION_COMPLETED, {
+              mission_id: mission.id,
+              mission_version: missionVersion(mission),
+              attempt_id: attemptId,
+              practice_competency: data.debrief.practice as Competency,
+              bands,
+            });
+          }
           setLastDebrief(data.debrief);
           await refresh();
           if (!cancelled) router.replace("/debrief");

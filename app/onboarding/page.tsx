@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useField } from "@/lib/store";
+import { track, EVENTS } from "@/lib/analytics/client";
 import { Arrow, Back } from "@/components/icons";
 
 type Step = {
@@ -46,20 +47,48 @@ const STEPS: Step[] = [
   },
 ];
 
+// Fixed-chip option sets — an onboarding value is only emitted as an enum when
+// it is one of these (a future free-text answer would be omitted, never sent).
+const ROLE_OPTIONS = new Set(STEPS[0].options);
+const USAGE_OPTIONS = new Set(STEPS[1].options);
+
+function onboardingCompletedProps(
+  picks: Record<string, string>,
+  completed: boolean,
+): { completed: boolean; role_enum?: string; ai_usage_enum?: string } {
+  const props: { completed: boolean; role_enum?: string; ai_usage_enum?: string } = {
+    completed,
+  };
+  if (picks.role && ROLE_OPTIONS.has(picks.role)) props.role_enum = picks.role;
+  if (picks.aiUsage && USAGE_OPTIONS.has(picks.aiUsage)) props.ai_usage_enum = picks.aiUsage;
+  // goal is deliberately NOT sent.
+  return props;
+}
+
 export default function Onboarding() {
   const router = useRouter();
-  const { saveOnboarding } = useField();
+  const { saveOnboarding, hydrated, userId } = useField();
   const [i, setI] = useState(0);
   const [picks, setPicks] = useState<Record<string, string>>({});
+  const startedTracked = useRef(false);
 
   const step = STEPS[i];
   const last = i === STEPS.length - 1;
+
+  // Onboarding Started — once, only after the anonymous identity has resolved.
+  useEffect(() => {
+    if (hydrated && userId && !startedTracked.current) {
+      startedTracked.current = true;
+      track(EVENTS.ONBOARDING_STARTED, {});
+    }
+  }, [hydrated, userId]);
 
   function choose(value: string) {
     const next = { ...picks, [step.key]: value };
     setPicks(next);
     if (last) {
       saveOnboarding(next, true);
+      track(EVENTS.ONBOARDING_COMPLETED, onboardingCompletedProps(next, true));
       router.push("/field");
     } else {
       // brief beat so the selection registers, then advance
@@ -73,6 +102,7 @@ export default function Onboarding() {
 
   function skip() {
     saveOnboarding(picks, true);
+    track(EVENTS.ONBOARDING_COMPLETED, onboardingCompletedProps(picks, false));
     router.push("/field");
   }
 

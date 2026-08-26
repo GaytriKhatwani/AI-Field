@@ -17,6 +17,7 @@ import type { Debrief } from "./debrief/types";
 import type { CompetencyMove } from "./progression/update";
 import { recommendNext } from "./progression/recommend";
 import { ensureAnonymousUser } from "./supabase/bootstrap";
+import { identifyUser, resetAnalytics } from "./analytics/client";
 
 // The app's client-side state, now backed by Supabase (RLS-scoped to the signed-in
 // anonymous user). The shape of useField() is kept stable so the surfaces that
@@ -189,6 +190,10 @@ export function FieldProvider({ children }: { children: ReactNode }) {
         supabaseRef.current = supabase as unknown as SupabaseClient;
         if (!user) throw new Error("no anonymous user");
 
+        // Bind analytics identity to the anonymous user; until this runs, all
+        // product events are a no-op (no userId → no event).
+        identifyUser(user.id);
+
         const client = supabase as unknown as SupabaseClient;
         const [profileRow, profile, completed, practice] = await Promise.all([
           loadProfileRow(client, user.id),
@@ -293,6 +298,9 @@ export function FieldProvider({ children }: { children: ReactNode }) {
   const resetAll = useCallback(async () => {
     try {
       sessionStorage.removeItem(DEBRIEF_KEY);
+      // Discard the analytics identity + dedup state so the next anonymous user
+      // starts on a fresh distinct_id.
+      resetAnalytics();
       await supabaseRef.current?.auth.signOut();
     } catch {
       /* ignore */
