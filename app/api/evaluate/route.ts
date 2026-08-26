@@ -238,7 +238,8 @@ export async function POST(req: Request) {
     // Most likely a concurrent finalize won the unique(attempt_id) race — return
     // the canonical evaluation rather than erroring or double-counting.
     const debrief = await returnExisting(supabase, userId, attemptId, attempt.mission_id);
-    if (debrief) return NextResponse.json({ status: "evaluated", debrief });
+    if (debrief)
+      return NextResponse.json({ status: "evaluated", debrief, missionId: attempt.mission_id });
     return NextResponse.json({ error: "finalize_failed" }, { status: 500 });
   }
   console.log(`[evaluate] finalized attempt=${attemptId} -> evaluated`);
@@ -251,5 +252,8 @@ export async function POST(req: Request) {
     messages,
     events,
   });
-  return NextResponse.json({ status: "evaluated", debrief });
+  // missionId lets the client resolve the mission and fire Evaluation Completed
+  // (the debrief itself carries no mission id). Kept consistent with the
+  // return_existing response above so the event fires on the FRESH path too.
+  return NextResponse.json({ status: "evaluated", debrief, missionId: attempt.mission_id });
 }

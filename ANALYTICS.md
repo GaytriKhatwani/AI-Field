@@ -33,6 +33,7 @@
 
 | Event | Question it answers | Properties (beyond app_version/platform) |
 |---|---|---|
+| Get Started Clicked | Do landing visitors start a mission? (funnel top) | — (fired right after the anon identity is minted) |
 | Onboarding Started | Are people getting through initial setup? | — |
 | Onboarding Completed | ″ | `completed: boolean` (false = skipped), `role_enum?`, `ai_usage_enum?` — fixed chips only; omitted for "Other"/free-text |
 | Mission Viewed | Do users understand what to do? | `mission_id`, `mission_version` |
@@ -42,8 +43,18 @@
 | Deliverable Submitted | Do users reach the core commitment point? | `mission_id`, `mission_version`, `attempt_id` |
 | Evaluation Completed | Does the loop complete? what skills/gaps? | `mission_id`, `mission_version`, `attempt_id`, `practice_competency`, `bands` (per-competency band map, enums only) |
 | Next Mission Clicked | Does the debrief create intent to continue? | `from_mission_id`, `to_mission_id`, `practice_competency` |
+| Save Profile Viewed | Is the first-debrief Save moment reaching users? | — |
+| Save Profile Clicked | Do they choose to convert to a Google account? | `auth_provider` (`"google"`) |
+| Save Profile Skipped | Do they decline and keep going anonymous? | — |
+
+**Activation layer note:** `Get Started Clicked` and the `Save Profile` trio bracket
+the funnel — intent to start, and post-value account conversion. Completed OAuth
+conversion is **not** a Mixpanel event; who actually holds a Google account is
+queried from Supabase (source of truth). The trio measures the offer's reach and
+the click-through, not the OAuth round-trip.
 
 **Firing points (tie to successful outcomes, never optimistic intent):**
+- Get Started Clicked → landing CTA, right after the anon user is minted + identified.
 - Onboarding Started → onboarding screen shown, after `hydrated && userId`, once.
 - Onboarding Completed → finish/skip resolves.
 - Mission Viewed → briefing renders. Mission Started → "Enter Workbench" click.
@@ -52,6 +63,8 @@
 - Deliverable Submitted → **after** `/api/submit` succeeds.
 - Evaluation Completed → **first** time the poll observes the canonical `evaluated`.
 - Next Mission Clicked → debrief/field CTA click.
+- Save Profile Viewed → first-debrief Save moment rendered, once (ref-guarded).
+- Save Profile Clicked → "Continue with Google" click. Save Profile Skipped → "Not now".
 
 Useful drop-off this shape measures: **entered workbench but never sent a message**
 (Mission Started with no following Workbench Message Sent). Do **not** restructure
