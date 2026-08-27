@@ -55,6 +55,33 @@ export function GoogleG(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function Sun(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 18 18" fill="none" aria-hidden width="16" height="16" {...props}>
+      <circle cx="9" cy="9" r="3.5" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M9 1.2v2M9 14.8v2M1.2 9h2M14.8 9h2M3.5 3.5l1.4 1.4M13.1 13.1l1.4 1.4M14.5 3.5l-1.4 1.4M4.9 13.1l-1.4 1.4"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function Moon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 18 18" fill="none" aria-hidden width="16" height="16" {...props}>
+      <path
+        d="M15.4 11.1A6.8 6.8 0 016.9 2.6 6.8 6.8 0 1015.4 11.1z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function Back(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 15 11" fill="none" aria-hidden width="15" height="11" {...props}>

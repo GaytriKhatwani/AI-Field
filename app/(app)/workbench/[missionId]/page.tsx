@@ -6,6 +6,7 @@ import { getMission, missionVersion } from "@/lib/missions";
 import type { DeliverableField } from "@/lib/missions/types";
 import { track, EVENTS } from "@/lib/analytics/client";
 import { Arrow, Back, Check } from "@/components/icons";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const HARD_CEILING = 12;
 
@@ -480,6 +481,7 @@ export default function Workbench() {
             </span>
           </div>
         </div>
+        <ThemeToggle />
         <button
           type="button"
           onClick={() => {
@@ -580,10 +582,8 @@ export default function Workbench() {
           className="flex flex-none items-center gap-3 border-b border-hairline bg-raised px-[clamp(1rem,3vw,1.75rem)] py-2.5 animate-fadeUp"
         >
           <p className="min-w-0 flex-1 text-[0.85rem] leading-snug text-ink">
-            Add at least one item before you finish. Work with the AI, then
-            select part of a reply and use{" "}
-            <span className="font-semibold">Use in deliverable</span> — or type
-            into a section directly.
+            Add at least one item before you finish. Work with the AI and add
+            useful output to a section — or type into a section directly.
           </p>
           <button
             type="button"
@@ -718,17 +718,11 @@ export default function Workbench() {
           {/* work with the AI / transcript */}
           <h2 className="section-label mb-1.5 mt-8">Work with the AI</h2>
           <p className="mb-3 max-w-[42ch] text-[0.82rem] leading-snug text-ink-2">
-            Ask it to help with the task. It follows your instructions, but it
-            won&rsquo;t tell you what to do or fix weak decisions for you.
+            Tell the AI what you need. It will follow your instructions, but it
+            won&rsquo;t fill in missing context or correct weak decisions for you.
           </p>
           <div className="min-h-0">
-            {messages.length === 0 && !thinking ? (
-              <p className="max-w-[38ch] text-[0.9rem] leading-relaxed text-ink-3">
-                Tell it what you need below. It does what you ask — it
-                won&rsquo;t coach you, fill in what you left out, or fix a vague
-                request.
-              </p>
-            ) : (
+            {messages.length === 0 && !thinking ? null : (
               <ol
                 ref={transcriptRef}
                 onMouseUp={readSelection}
@@ -933,10 +927,9 @@ export default function Workbench() {
 
           {deliverableEmpty && (
             <p className="mt-8 max-w-[44ch] text-[0.9rem] leading-relaxed text-ink-3">
-              This is what you&rsquo;ll produce. Work with the AI, then select
-              part of a reply and use{" "}
-              <span className="font-semibold text-ink-2">Use in deliverable</span>{" "}
-              — or type here directly. You decide what&rsquo;s worth keeping.
+              This is what you&rsquo;ll produce. Work with the AI, add useful
+              output to the appropriate section, or write here directly. You
+              decide what&rsquo;s worth keeping.
             </p>
           )}
         </section>

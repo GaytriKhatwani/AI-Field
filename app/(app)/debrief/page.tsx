@@ -10,6 +10,7 @@ import {
   bandLabel,
   bandToState,
   scoreToBand,
+  practicePitch,
   type Profile,
 } from "@/lib/competencies";
 import { Marker } from "@/components/CapabilityRegister";
@@ -17,6 +18,7 @@ import type { Competency } from "@/lib/missions/types";
 import { track, EVENTS } from "@/lib/analytics/client";
 import { ACCOUNT_LINKING_ENABLED } from "@/lib/flags";
 import { Arrow, Back, GoogleG } from "@/components/icons";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import type { Debrief } from "@/lib/debrief/types";
 
 type Deliverable = {
@@ -143,9 +145,6 @@ function DebriefInner() {
   const headerTitle = isReview
     ? (getMission(review!.missionId)?.title ?? "Scenario")
     : (completed[0]?.title ?? "Scenario");
-  const practiceAfter = bandLabel(
-    d.moves.find((m) => m.competency === d.practice)?.after ?? "not_shown",
-  );
   const next = isReview ? null : getMission(d.nextMissionId);
   const mission = isReview ? getMission(review!.missionId) : null;
 
@@ -159,27 +158,28 @@ function DebriefInner() {
 
   return (
     <main className="mx-auto max-w-reading px-[clamp(1.25rem,5vw,3.25rem)] pb-24 pt-[clamp(1.5rem,4.5vw,3.25rem)]">
-      <button
-        type="button"
-        onClick={() => router.push("/field")}
-        className="-ml-1 inline-flex min-h-[32px] items-center gap-[0.6ch] px-1 text-[0.82rem] font-medium text-ink-3 transition-colors hover:text-accent"
-      >
-        <Back /> The Field
-      </button>
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => router.push("/field")}
+          className="-ml-1 inline-flex min-h-[32px] items-center gap-[0.6ch] px-1 text-[0.82rem] font-medium text-ink-3 transition-colors hover:text-accent"
+        >
+          <Back /> The Field
+        </button>
+        <ThemeToggle />
+      </div>
 
       {/* hero — the emotional peak. It breaks the rail to the page's left edge so
           the verdict lands with full force; the mission/mode is an informative
           folio above it, and one framing line says what this read is. */}
       <header className="mt-[clamp(2rem,6vw,3.5rem)] animate-riseIn">
-        <p className="meta mb-3">
-          {headerTitle} · {isReview ? "Reviewing past practice" : "Practice review"}
-        </p>
+        <p className="meta mb-3">{headerTitle} · Practice Review</p>
         <h1 className="display text-ink" style={headlineStyle(d.headline)}>
           {d.headline}
         </h1>
         <p className="mt-4 max-w-[46ch] text-[0.95rem] leading-relaxed text-ink-2">
           {isReview
-            ? "The review of this past practice — how you worked with the AI that time."
+            ? "A look back at how you approached this scenario."
             : "An honest review of how you worked — what landed, what to improve, and the practice that follows."}
         </p>
       </header>
@@ -401,10 +401,9 @@ function DebriefInner() {
 
       {isReview ? (
         /* review: no forward CTA — the recommendation lives on the Field, current */
-        <Row as="section" aria-label="Back to your practice" rail={<p className="meta">Next</p>}>
+        <Row as="section" aria-label="Next" rail={<p className="meta">Next</p>}>
           <p className="max-w-measure text-[0.95rem] leading-relaxed text-ink-2">
-            This is the review of that practice. Your live recommendation — built
-            from everything you&rsquo;ve done since — is waiting on the Field.
+            Your latest recommendation is waiting on the Field.
           </p>
           <button type="button" onClick={() => router.push("/field")} className="btn mt-6">
             Back to the Field
@@ -422,11 +421,14 @@ function DebriefInner() {
           rail={<p className="meta">Recommended next practice</p>}
         >
           <p className="max-w-[38ch] text-[clamp(1.05rem,2.4vw,1.2rem)] font-medium leading-[1.45] text-ink">
-            Because your{" "}
+            Recommended to strengthen{" "}
             <span className="font-semibold text-accent">
               {COMPETENCY_META[d.practice].label}
-            </span>{" "}
-            is {practiceAfter}, your next practice focuses on it.
+            </span>
+            .
+          </p>
+          <p className="mt-3 max-w-measure text-[1.02rem] leading-relaxed text-ink-2">
+            {practicePitch(d.practice, d.newProfile)}
           </p>
           <h2
             className="display mt-6 text-ink"
@@ -460,7 +462,7 @@ function DebriefInner() {
         </Row>
       ) : (
         /* live but the next mission id didn't resolve — degrade, don't crash */
-        <Row as="section" aria-label="Back to your practice" rail={<p className="meta">Next</p>}>
+        <Row as="section" aria-label="Next" rail={<p className="meta">Next</p>}>
           <p className="max-w-measure text-[0.95rem] leading-relaxed text-ink-2">
             Your review is saved. Head back to the Field to pick up your next
             practice.

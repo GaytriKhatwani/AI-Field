@@ -6,6 +6,7 @@ import { useField } from "@/lib/store";
 import { FIRST_MISSION_ID } from "@/lib/missions";
 import { track, EVENTS } from "@/lib/analytics/client";
 import { Arrow, Back } from "@/components/icons";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 type Step = {
   key: "role" | "aiUsage" | "goal";
@@ -120,6 +121,7 @@ export default function Onboarding() {
             AI&nbsp;Field
           </span>
           <div className="flex items-center gap-5">
+            <ThemeToggle />
             {i > 0 && (
               <button
                 type="button"

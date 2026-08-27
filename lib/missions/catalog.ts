@@ -60,9 +60,9 @@ announce", "game-changer", "revolutionary". Keep sentences short.`,
 
 export const theBrief: Mission = {
   id: "the-brief",
-  title: "The Brief",
+  title: "From Ask to Brief",
   tagline: "Turn a vague ask into a brief the AI can execute.",
-  premise: "One line of instruction, a whole deliverable expected. Close the gap first.",
+  premise: "Turn a one-line request into a brief the AI can execute.",
   domain: "product",
   effortMinutes: 12,
   availability: "later",

@@ -29,8 +29,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${display.variable} ${body.variable}`}>
+    <html
+      lang="en"
+      className={`${display.variable} ${body.variable}`}
+      suppressHydrationWarning
+    >
       <body>
+        {/* Set the theme on <html> BEFORE the styled content paints, so there's
+            no flash. The saved choice wins; with nothing saved the app defaults
+            to dark (the user can toggle to light). Kept in sync by
+            components/ThemeToggle. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('aifield.theme');if(t!=='light'&&t!=='dark'){t='dark';}document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();`,
+          }}
+        />
         {/* RouteFocus + the focus target live in the ROOT layout so the public
             landing gets them too. The FieldProvider (which mints the anonymous
             user) lives one level down in app/(app)/layout.tsx, so viewing the

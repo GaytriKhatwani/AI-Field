@@ -127,6 +127,43 @@ export const FRESH_PROFILE: Profile = {
   synthesis: 0,
 };
 
+// Behaviour-based recommendation copy: for the capability to practise next, name
+// the behaviour that needs more practice and what the recommended scenario will
+// exercise — never "your gap" / "close the gap" / remedial language.
+const PRACTICE_NEED: Record<Competency, string> = {
+  context:
+    "the AI didn't always have the context it needed. This scenario focuses on setting up the right context before you start.",
+  direction:
+    "your instructions left room for the AI to guess. This scenario focuses on turning a loose ask into clear, specific direction.",
+  iteration:
+    "you took the AI's first answer as final. This scenario focuses on pushing past the first response.",
+  verification:
+    "you didn't fully check the AI's work against the source. This scenario focuses on catching what it gets wrong.",
+  synthesis:
+    "you submitted the AI's first response without shaping it. This scenario focuses on turning rough output into finished work.",
+};
+
+/**
+ * A short, behaviour-focused reason a scenario is recommended:
+ *   <what you demonstrated>, but <behaviour to practise>. <what this scenario exercises>.
+ * Leads with a real strength from the profile so it never just repeats a state.
+ */
+export function practicePitch(gap: Competency, profile: Profile): string {
+  const strengths = COMPETENCY_ORDER.filter(
+    (c) => c !== gap && profile[c] > 0,
+  ).sort((a, b) => profile[b] - profile[a]);
+  const top = strengths[0];
+  const topBand = top ? scoreToBand(profile[top]) : "not_shown";
+  const label = top ? COMPETENCY_META[top].label.toLowerCase() : "";
+  const ack =
+    top && (topBand === "strong" || topBand === "proficient")
+      ? `You handled ${label} well`
+      : top && (topBand === "developing" || topBand === "emerging")
+        ? `You made progress on ${label}`
+        : "You made a solid first pass";
+  return `${ack}, but ${PRACTICE_NEED[gap]}`;
+}
+
 /** The gap = lowest-scoring competency, ties broken by COMPETENCY_ORDER. */
 export function gapCompetency(profile: Profile): Competency {
   let gap: Competency = COMPETENCY_ORDER[0];

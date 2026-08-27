@@ -98,7 +98,7 @@ ${mission.briefing.constraints.map((c) => `- ${c}`).join("\n")}
 # What this scenario tests (only these capabilities are scored)
 ${competencyBlock}
 
-# How an expert works on this scenario
+# What a strong approach looks like on this scenario
 ${mission.judgeGuidance}
 
 # The person's full session (reference evidence by turn id — NEVER quote text)
@@ -118,8 +118,10 @@ ${renderDeliverable(input.deliverable)}
 - Message count is NOT a measure of skill. Do not reward or penalise the number of messages. Judge the substance of how they worked.
 - For each scored capability, choose exactly one band: not_shown, emerging, developing, proficient, strong. Justify it in "why" and list the turn ids that support it in "evidence_turn_ids". Never quote the text — reference ids only.
 - Be specific and honest. If you let the AI invent facts the source material never contained (e.g. dates or owners the notes never stated) and did not catch it, that is a verification miss — say so plainly.
-- Coaching must be plain and actionable, written to "you": what worked, what to improve next, how a stronger approach would have handled it, one thing you did well, and one capability to practise next.
-- The headline is short and honest — no numeric score, no praise clichés.
+- Coaching must be plain, specific, and actionable, written to "you": what worked, what to improve next, how a stronger approach would handle it, one thing you did well, and one capability to practise next. Describe stronger actions directly — never compare the person to an "expert", a "strong operator", or any undefined ideal.
+- Keep the stronger-approach guidance specific to the session evidence and concise: prefer short sentences over long ones with several dashes or nested qualifications.
+- In each "why", lead with the observed action, then its effect (what it helped or what it missed). Never expose internal turn/event identifiers or telemetry labels in the prose.
+- The headline is short, specific, candid, and developmental — never accusatory. Describe the behaviour, not a personal failing: no numeric score, no praise clichés. Prefer forms like "Clear direction. The output needed more checking." Never write "you stopped working", "you failed to…", "you did nothing", "you blindly accepted…", or "the operator…".
 - practice_competency is the single capability the next scenario should target — normally your weakest demonstration, but a concrete demonstrated miss (like letting an invented fact through) outranks a merely under-exercised capability.
 
 Return ONLY the structured JSON object required by the schema.`;

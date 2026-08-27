@@ -8,6 +8,7 @@ import { COMPETENCY_ORDER, COMPETENCY_META } from "@/lib/competencies";
 import { useField } from "@/lib/store";
 import { track, EVENTS } from "@/lib/analytics/client";
 import { Arrow, Back } from "@/components/icons";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function Briefing() {
   const params = useParams<{ missionId: string }>();
@@ -48,13 +49,16 @@ export default function Briefing() {
 
   return (
     <main className="mx-auto max-w-reading px-[clamp(1.25rem,5vw,3.25rem)] pb-24 pt-[clamp(1.5rem,4.5vw,3.25rem)]">
-      <button
-        type="button"
-        onClick={() => router.push("/field")}
-        className="inline-flex items-center gap-[0.6ch] text-[0.82rem] font-medium text-ink-3 transition-colors hover:text-accent"
-      >
-        <Back /> The Field
-      </button>
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => router.push("/field")}
+          className="inline-flex items-center gap-[0.6ch] text-[0.82rem] font-medium text-ink-3 transition-colors hover:text-accent"
+        >
+          <Back /> The Field
+        </button>
+        <ThemeToggle />
+      </div>
 
       <header className="mt-[clamp(2.5rem,7vw,4.5rem)] max-w-[24ch] animate-riseIn">
         <p className="meta mb-4">

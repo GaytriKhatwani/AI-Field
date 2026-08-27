@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { initAnalytics, identifyUser, track, EVENTS } from "@/lib/analytics/client";
 import { ACCOUNT_LINKING_ENABLED } from "@/lib/flags";
 import { Arrow } from "@/components/icons";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 // The public landing (Persuade). Rendered outside FieldProvider, so it holds no
 // store and mints no anonymous user on view. "Try your first mission" is the
@@ -80,11 +81,14 @@ export function Landing() {
             >
               AI&nbsp;Field
             </span>
-            {ACCOUNT_LINKING_ENABLED && (
-              <button type="button" onClick={signIn} className="btn--quiet">
-                Sign in
-              </button>
-            )}
+            <div className="flex items-center gap-4">
+              {ACCOUNT_LINKING_ENABLED && (
+                <button type="button" onClick={signIn} className="btn--quiet">
+                  Sign in
+                </button>
+              )}
+              <ThemeToggle />
+            </div>
           </header>
 
           <div className="grid items-center gap-x-[clamp(2rem,5vw,5rem)] gap-y-[clamp(3rem,7vw,4.5rem)] pb-[clamp(3rem,7vw,6rem)] pt-[clamp(2.5rem,7vw,5.5rem)] lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">

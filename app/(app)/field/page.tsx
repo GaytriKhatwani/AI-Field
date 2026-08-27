@@ -12,10 +12,12 @@ import {
   gapCompetency,
   scoreToBand,
   bandToState,
+  practicePitch,
 } from "@/lib/competencies";
 import { CapabilityRegister } from "@/components/CapabilityRegister";
 import { ACCOUNT_LINKING_ENABLED } from "@/lib/flags";
 import { Arrow, Chevron } from "@/components/icons";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function Field() {
   const router = useRouter();
@@ -118,29 +120,32 @@ export default function Field() {
         >
           AI&nbsp;Field
         </span>
-        <button
-          type="button"
-          aria-expanded={recordOpen}
-          onClick={() => setRecordOpen((o) => !o)}
-          className="inline-flex items-center gap-[0.5ch] border-b border-transparent pb-1 text-[0.82rem] font-medium text-ink-2 transition-colors hover:border-hairline hover:text-ink"
-        >
-          <span>
-            Your Field Profile ·{" "}
-            {hasReps ? (
-              <span className="num">
-                {completed.length}&nbsp;scenario{completed.length > 1 ? "s" : ""} completed
-              </span>
-            ) : (
-              "ready to begin"
-            )}
-          </span>
-          <Chevron
-            width={7}
-            height={11}
-            className="transition-transform"
-            style={{ transform: recordOpen ? "rotate(90deg)" : "none" }}
-          />
-        </button>
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            aria-expanded={recordOpen}
+            onClick={() => setRecordOpen((o) => !o)}
+            className="inline-flex items-center gap-[0.5ch] border-b border-transparent pb-1 text-[0.82rem] font-medium text-ink-2 transition-colors hover:border-hairline hover:text-ink"
+          >
+            <span>
+              Your Field Profile ·{" "}
+              {hasReps ? (
+                <span className="num">
+                  {completed.length}&nbsp;scenario{completed.length > 1 ? "s" : ""} completed
+                </span>
+              ) : (
+                "ready to begin"
+              )}
+            </span>
+            <Chevron
+              width={7}
+              height={11}
+              className="transition-transform"
+              style={{ transform: recordOpen ? "rotate(90deg)" : "none" }}
+            />
+          </button>
+          <ThemeToggle />
+        </div>
       </header>
 
       {recordOpen && (
@@ -195,8 +200,8 @@ export default function Field() {
         <p className="mt-[1.35rem] max-w-[34ch] text-[clamp(1.05rem,2.4vw,1.2rem)] font-medium leading-[1.45] text-ink">
           {whyLine}
         </p>
-        <p className="mt-2 max-w-[36ch] text-[clamp(1.02rem,2.2vw,1.12rem)] leading-normal text-ink-2">
-          {recommended.premise}
+        <p className="mt-2 max-w-[38ch] text-[clamp(1.02rem,2.2vw,1.12rem)] leading-normal text-ink-2">
+          {hasReps ? practicePitch(gap!, profile) : recommended.premise}
         </p>
         <p className="meta mt-[1.4rem] flex flex-wrap items-center gap-[0.75ch]">
           <span className="num">~{recommended.effortMinutes}</span> min
