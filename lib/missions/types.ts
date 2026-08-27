@@ -1,5 +1,5 @@
 // Mission content schema — hand-authored in the repo (no CMS), mirroring
-// plan.md's Mission type. The judge/rubric never lives here.
+// docs/plan.md's Mission type. The judge/rubric never lives here.
 
 export type Competency =
   | "context"

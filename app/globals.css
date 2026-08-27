@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ============================================================
-   AI Field — tokens (see DESIGN-SYSTEM.md). One petrol accent.
+   AI Field — tokens (see docs/DESIGN-SYSTEM.md). One petrol accent.
    ============================================================ */
 :root {
   /* Tested contrast floors on --ground (WCAG AA needs 4.5:1 for the small text

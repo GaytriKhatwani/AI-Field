@@ -109,12 +109,12 @@ Environment contract (see `.env.local.example` for the authoritative list):
 ## Repository docs
 
 - **[PRODUCT.md](PRODUCT.md)** — durable product truth (users, purpose, positioning, constraints).
-- **[SPEC.md](SPEC.md)** — buildable requirements, user stories, the M1 gate.
-- **[plan.md](plan.md)** — plan + rationale (plain-English layer).
-- **[ANALYTICS.md](ANALYTICS.md)** — the Mixpanel event catalog and the locked analytics contract.
-- **[SPEC-activation-layer.md](SPEC-activation-layer.md)** — landing + FTUE + Google account-conversion layer.
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** — production deployment checklist.
-- **Design docs:** `DESIGN-SYSTEM.md`, `DESIGN-CHARTER.md`, `DESIGN-DIRECTIONS.md`, `EXPERIENCE-THESIS.md`, `ANTI-PATTERNS.md`, and `THE-FIELD-*.md`.
+- **[docs/SPEC.md](docs/SPEC.md)** — buildable requirements, user stories, the M1 gate.
+- **[docs/plan.md](docs/plan.md)** — plan + rationale (plain-English layer).
+- **[docs/ANALYTICS.md](docs/ANALYTICS.md)** — the Mixpanel event catalog and the locked analytics contract.
+- **[docs/SPEC-activation-layer.md](docs/SPEC-activation-layer.md)** — landing + FTUE + Google account-conversion layer.
+- **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — production deployment checklist.
+- **Design docs (in [`docs/`](docs/)):** `DESIGN-SYSTEM.md`, `DESIGN-CHARTER.md`, `DESIGN-DIRECTIONS.md`, `EXPERIENCE-THESIS.md`, `ANTI-PATTERNS.md`, and `THE-FIELD-*.md`.
 
 ---
 

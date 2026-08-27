@@ -5,7 +5,7 @@ import type { Band } from "../competencies";
 // source of product analytics: components call track(EVENTS.X, {…}) and the
 // property shape is enforced at compile time. No arbitrary track("whatever", {…})
 // anywhere. Every event exists to answer a specific product question (see
-// ANALYTICS.md). Egress is metadata only — ids / enums / counts / bands /
+// docs/ANALYTICS.md). Egress is metadata only — ids / enums / counts / bands /
 // booleans — never transcript, prompts, AI output, deliverable, judge prose, or
 // free-text onboarding answers.
 

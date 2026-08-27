@@ -10,7 +10,7 @@ import {
 } from "./events";
 
 // The single tracking boundary. Client-side only, identified-only, safe no-op
-// when unconfigured. See ANALYTICS.md for the locked contract.
+// when unconfigured. See docs/ANALYTICS.md for the locked contract.
 //
 // States:
 //   no token, prod  → full no-op.
@@ -38,7 +38,7 @@ export function initAnalytics(): void {
     ip: false, // no IP/geolocation collection
     // Controlled MVP cohort: measure the funnel even for Do-Not-Track browsers
     // (analytics is anonymous + metadata-only). Revisit with the consent work
-    // before broader/public exposure — see ANALYTICS.md launch checklist.
+    // before broader/public exposure — see docs/ANALYTICS.md launch checklist.
     ignore_dnt: true,
     persistence: "localStorage",
     ...(API_HOST ? { api_host: API_HOST } : {}),
