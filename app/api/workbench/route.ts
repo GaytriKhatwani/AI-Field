@@ -5,6 +5,10 @@ import { streamWorkbench, type ChatTurn } from "@/lib/ai/provider";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// The workbench streams the model reply (~20-25s). Vercel's default function
+// timeout (10s on Hobby) kills that mid-stream, so the AI appears not to respond
+// in production. Raise the ceiling to 50s (under the 60s Hobby cap).
+export const maxDuration = 50;
 
 type SupabaseServer = Awaited<ReturnType<typeof createClient>>;
 

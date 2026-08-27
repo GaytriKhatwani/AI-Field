@@ -14,6 +14,10 @@ import type { CompetencyMove } from "@/lib/progression/update";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// The judge runs at high effort (~60s). Without this, Vercel's default timeout
+// kills the evaluation before it can finalize. 50s stays under the 60s Hobby cap,
+// so the ~60s judge may still be tight here — Pro allows up to 300s for headroom.
+export const maxDuration = 50;
 
 type SupabaseServer = Awaited<ReturnType<typeof createClient>>;
 
