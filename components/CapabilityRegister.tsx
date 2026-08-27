@@ -73,7 +73,7 @@ export function CapabilityRegister({
   profile,
   gap,
   evidence,
-  label = "Where your practice stands",
+  label = "Your five AI capabilities",
 }: {
   profile: Profile;
   gap: Competency | null;
@@ -83,7 +83,7 @@ export function CapabilityRegister({
   const [open, setOpen] = useState<Competency | null>(null);
 
   return (
-    <section aria-label="Your five capabilities">
+    <section aria-label="Your five AI capabilities">
       <h2 className="section-label mb-5">{label}</h2>
       <ul className="caps-grid m-0 list-none p-0 overflow-hidden rounded-sm border border-hairline bg-hairline">
         {COMPETENCY_ORDER.map((comp) => {
@@ -112,7 +112,10 @@ export function CapabilityRegister({
                 <span className="text-[0.82rem] leading-[1.35] text-ink-3">
                   {phrase}
                   {isGap && (
-                    <span className="font-semibold text-accent"> · your gap</span>
+                    <span className="font-semibold text-accent">
+                      {" "}
+                      · best to practise next
+                    </span>
                   )}
                 </span>
               </button>

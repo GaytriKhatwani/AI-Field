@@ -44,24 +44,41 @@ export type Band =
 
 export type MarkerKind = "open" | "filled" | "ringed";
 
+// The one shared capability-state scale — every surface (the Field register, the
+// Practice Review, the Field Profile) reads its words from here so a capability
+// never reads two ways across the product.
+//   Not observed yet · Starting to show · Developing · Consistent · A clear strength
+
 /** The glanceable practice state for the register: marker glyph + words. */
 export function bandToState(band: Band): { marker: MarkerKind; phrase: string } {
   switch (band) {
     case "not_shown":
-      return { marker: "open", phrase: "not yet worked" };
+      return { marker: "open", phrase: "Not observed yet" };
     case "emerging":
-      return { marker: "filled", phrase: "beginning to show" };
+      return { marker: "filled", phrase: "Starting to show" };
     case "developing":
-      return { marker: "filled", phrase: "clearly shown" };
+      return { marker: "filled", phrase: "Developing" };
     case "proficient":
-      return { marker: "ringed", phrase: "shown consistently" };
+      return { marker: "ringed", phrase: "Consistent" };
     case "strong":
-      return { marker: "ringed", phrase: "a reliable strength" };
+      return { marker: "ringed", phrase: "A clear strength" };
   }
 }
 
+/** The same scale in lowercase, for flowing inline sentences ("your Synthesis is …"). */
 export function bandLabel(band: Band): string {
-  return band === "not_shown" ? "not yet shown" : band;
+  switch (band) {
+    case "not_shown":
+      return "not observed yet";
+    case "emerging":
+      return "starting to show";
+    case "developing":
+      return "developing";
+    case "proficient":
+      return "consistent";
+    case "strong":
+      return "a clear strength";
+  }
 }
 
 /**

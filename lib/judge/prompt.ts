@@ -47,7 +47,7 @@ function renderTimeline(input: JudgeInput): string {
     lines.push(`${e.turnId}  [event] ${e.kind}: ${e.detail}`);
   }
   for (const m of input.messages) {
-    const actor = m.role === "user" ? "OPERATOR" : "AI";
+    const actor = m.role === "user" ? "PERSON" : "AI";
     lines.push(`${m.turnId}  ${actor}: ${m.text}`);
   }
   return lines.join("\n");
@@ -86,40 +86,41 @@ export function buildJudgePrompt(input: JudgeInput): string {
     })
     .join("\n");
 
-  return `You are the examiner in AI Field, a practice environment where people learn to DIRECT an AI. You are NOT grading the AI's output for its own sake. You are grading HOW WELL THE OPERATOR DIRECTED THE AI to reach the mission's goal.
+  return `You are the reviewer in AI Field, a practice environment where people practise working with an AI on realistic tasks. You are NOT grading the AI's output for its own sake. You are grading HOW WELL THE PERSON worked with the AI to reach the scenario's goal.
 
-# The mission
+# The scenario
 Title: ${mission.title}
-Scenario: ${mission.briefing.scenario}
-Objective: ${mission.briefing.objective}
-Constraints:
+Situation: ${mission.briefing.scenario}
+Task: ${mission.briefing.objective}
+What matters:
 ${mission.briefing.constraints.map((c) => `- ${c}`).join("\n")}
 
-# What this mission tests (only these competencies are scored)
+# What this scenario tests (only these capabilities are scored)
 ${competencyBlock}
 
-# How an expert directs on this mission
+# How an expert works on this scenario
 ${mission.judgeGuidance}
 
-# The operator's full session (reference evidence by turn id — NEVER quote text)
+# The person's full session (reference evidence by turn id — NEVER quote text)
 ${renderTimeline(input)}
 
-# What the operator submitted as their deliverable
+# What the person produced as their deliverable
 ${renderDeliverable(input.deliverable)}
 
-# Your judgement — rules
-- Judge only the competencies listed above. Do not score any competency not listed.
+# Your review — rules
+- Judge only the capabilities listed above. Do not score any capability not listed.
+- Address the person directly as "you" in the headline and all coaching. Never call them "the operator" or refer to them in the third person.
 - Apply the SAME standard to everyone. ${
     input.operatorExperience
       ? `Pitch your TONE for someone who describes their AI experience as "${input.operatorExperience}", but do not lower the bar.`
       : "Keep the tone plain and direct."
   }
-- Turn count is NOT a measure of skill. Do not reward or penalise the number of exchanges. Judge the substance of the direction.
-- For each scored competency, choose exactly one band: not_shown, emerging, developing, proficient, strong. Justify it in "why" and list the turn ids that support it in "evidence_turn_ids". Never quote the text — reference ids only.
-- Be specific and honest. If the operator let the AI invent facts the source material never contained (e.g. dates or owners the notes never stated) and did not catch it, that is a verification miss — say so plainly.
-- Coaching must be plain and actionable: what worked, what they missed, how an expert would have approached it, one skill they showed, one skill to practise next.
+- Message count is NOT a measure of skill. Do not reward or penalise the number of messages. Judge the substance of how they worked.
+- For each scored capability, choose exactly one band: not_shown, emerging, developing, proficient, strong. Justify it in "why" and list the turn ids that support it in "evidence_turn_ids". Never quote the text — reference ids only.
+- Be specific and honest. If you let the AI invent facts the source material never contained (e.g. dates or owners the notes never stated) and did not catch it, that is a verification miss — say so plainly.
+- Coaching must be plain and actionable, written to "you": what worked, what to improve next, how a stronger approach would have handled it, one thing you did well, and one capability to practise next.
 - The headline is short and honest — no numeric score, no praise clichés.
-- practice_competency is the single competency the next rep should target — normally their weakest demonstration, but a concrete demonstrated miss (like letting an invented fact through) outranks a merely under-exercised skill.
+- practice_competency is the single capability the next scenario should target — normally your weakest demonstration, but a concrete demonstrated miss (like letting an invented fact through) outranks a merely under-exercised capability.
 
 Return ONLY the structured JSON object required by the schema.`;
 }

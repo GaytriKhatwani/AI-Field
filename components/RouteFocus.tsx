@@ -11,10 +11,10 @@ import { usePathname } from "next/navigation";
 function routeName(path: string): string {
   if (path.startsWith("/onboarding")) return "Setting up your practice";
   if (path.startsWith("/field")) return "The Field";
-  if (path.startsWith("/briefing")) return "Mission briefing";
+  if (path.startsWith("/briefing")) return "Scenario brief";
   if (path.startsWith("/workbench")) return "Workbench";
-  if (path.startsWith("/evaluating")) return "The examiner is reading your session";
-  if (path.startsWith("/debrief")) return "Debrief";
+  if (path.startsWith("/evaluating")) return "Preparing your practice review";
+  if (path.startsWith("/debrief")) return "Practice review";
   if (path.startsWith("/auth/callback")) return "Signing you in";
   if (path === "/") return "Welcome to AI Field";
   return "AI Field";

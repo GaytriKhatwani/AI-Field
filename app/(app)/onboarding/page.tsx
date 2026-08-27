@@ -10,7 +10,7 @@ import { Arrow, Back } from "@/components/icons";
 type Step = {
   key: "role" | "aiUsage" | "goal";
   prompt: string;
-  aside: string;
+  aside?: string;
   options: string[];
 };
 
@@ -18,7 +18,7 @@ const STEPS: Step[] = [
   {
     key: "role",
     prompt: "What kind of work do you do?",
-    aside: "This just tailors the missions and wording to you — it never changes how you're judged.",
+    aside: "We'll tailor the situations and language.",
     options: [
       "Marketing",
       "Operations",
@@ -30,20 +30,20 @@ const STEPS: Step[] = [
   },
   {
     key: "aiUsage",
-    prompt: "How often do you work with AI?",
-    aside: "So the coaching meets you where you are.",
-    options: ["Rarely", "A few times a week", "Most days", "Constantly"],
+    prompt: "How often do you use AI for work?",
+    aside: "We'll calibrate the coaching.",
+    options: ["Rarely", "A few times a week", "Most days", "Throughout the day"],
   },
   {
     key: "goal",
-    prompt: "What do you want to get sharper at?",
-    aside: "Your first rep is set either way — this just tunes the framing.",
+    prompt: "What would you most like to improve?",
     options: [
-      "Briefing AI properly",
-      "Checking what it gives back",
-      "Pushing past the first answer",
-      "Turning output into real work",
-      "Not sure yet — show me",
+      "Giving AI better context",
+      "Giving clearer instructions",
+      "Checking whether its work is reliable",
+      "Improving weak first answers",
+      "Turning AI output into finished work",
+      "Not sure yet",
     ],
   },
 ];
@@ -134,17 +134,18 @@ export default function Onboarding() {
               onClick={skip}
               className="btn--quiet inline-flex items-center gap-[0.5ch] border-b border-transparent hover:border-hairline"
             >
-              Skip to your first mission
+              Skip to the first scenario
               <Arrow width={14} />
             </button>
           </div>
         </header>
 
         <div key={i} className="flex flex-1 flex-col justify-center py-12 animate-riseIn">
-          <p className="section-label mb-2.5">Three quick questions</p>
+          <p className="section-label mb-2.5">Before your first scenario</p>
           {i === 0 && (
-            <p className="mb-5 max-w-[38ch] text-[0.95rem] leading-relaxed text-ink-2">
-              Just enough to tune your first assignment — skip any of it.
+            <p className="mb-5 max-w-[40ch] text-[0.95rem] leading-relaxed text-ink-2">
+              Make your first practice more relevant — three optional questions.
+              Skip them if you&rsquo;d rather begin.
             </p>
           )}
           <h1
@@ -153,9 +154,11 @@ export default function Onboarding() {
           >
             {step.prompt}
           </h1>
-          <p className="mt-5 max-w-[42ch] text-[0.95rem] leading-relaxed text-ink-2">
-            {step.aside}
-          </p>
+          {step.aside && (
+            <p className="mt-5 max-w-[42ch] text-[0.95rem] leading-relaxed text-ink-2">
+              {step.aside}
+            </p>
+          )}
 
           <ul
             role="radiogroup"

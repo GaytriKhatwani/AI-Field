@@ -11,7 +11,6 @@ import {
   COMPETENCY_META,
   gapCompetency,
   scoreToBand,
-  bandLabel,
   bandToState,
 } from "@/lib/competencies";
 import { CapabilityRegister } from "@/components/CapabilityRegister";
@@ -64,17 +63,16 @@ export default function Field() {
       if (comp === gap) {
         out[comp] =
           band === "not_shown"
-            ? `Not yet worked — your current gap. ${recommended.title} is built to draw it out.`
-            : `${phrase} — but still your thinnest capability. ${recommended.title} targets it next.`;
+            ? `Not observed yet — your best area to practise next. ${recommended.title} is built to draw it out.`
+            : `${phrase} — and still your best area to practise next. ${recommended.title} focuses on it.`;
         continue;
       }
       if (profile[comp] > 0) {
         const rep = completed.find((c) => c.shown.includes(comp));
-        out[comp] = rep
-          ? `Shown in ${rep.title} — ${phrase}.`
-          : `${phrase[0].toUpperCase()}${phrase.slice(1)}.`;
+        out[comp] = rep ? `Shown in ${rep.title} — ${phrase}.` : `${phrase}.`;
       } else {
-        out[comp] = "Not yet worked — a mission will draw it out when it's the useful next rep.";
+        out[comp] =
+          "Not observed yet — a later scenario will draw it out when it's the useful next one.";
       }
     }
     return out;
@@ -82,16 +80,16 @@ export default function Field() {
 
   const whyLine = hasReps ? (
     <>
-      Recommended because your{" "}
+      Recommended to strengthen{" "}
       <span className="font-semibold text-accent">
         {COMPETENCY_META[gap!].label}
-      </span>{" "}
-      is {bandLabel(scoreToBand(profile[gap!]))}.
+      </span>
+      .
     </>
   ) : (
     <>
-      Your first rep — a task every operator faces, chosen to set an honest
-      baseline across all five capabilities.
+      Your first scenario — a realistic task chosen to establish your starting
+      Field Profile across all five capabilities.
     </>
   );
 
@@ -127,13 +125,13 @@ export default function Field() {
           className="inline-flex items-center gap-[0.5ch] border-b border-transparent pb-1 text-[0.82rem] font-medium text-ink-2 transition-colors hover:border-hairline hover:text-ink"
         >
           <span>
-            your practice —{" "}
+            Your Field Profile ·{" "}
             {hasReps ? (
               <span className="num">
-                {completed.length}&nbsp;rep{completed.length > 1 ? "s" : ""} worked
+                {completed.length}&nbsp;scenario{completed.length > 1 ? "s" : ""} completed
               </span>
             ) : (
-              "not started"
+              "ready to begin"
             )}
           </span>
           <Chevron
@@ -181,7 +179,7 @@ export default function Field() {
               ))}
             </ul>
           ) : (
-            "Your record begins with your first rep, and grows one worked mission at a time."
+            "Your record begins with your first scenario, and grows one completed scenario at a time."
           )}
         </div>
       )}
@@ -190,7 +188,7 @@ export default function Field() {
       {ACCOUNT_LINKING_ENABLED && isAnonymous && hasReps && <FieldSaveLine />}
 
       {/* the one next rep */}
-      <section className="mt-[clamp(3rem,9vw,6rem)] max-w-[40ch] animate-riseIn" aria-label="Your next rep">
+      <section className="mt-[clamp(3rem,9vw,6rem)] max-w-[40ch] animate-riseIn" aria-label="Your next scenario">
         <h1 className="display text-ink" style={{ fontSize: "clamp(2.7rem,8.5vw,5rem)" }}>
           {recommended.title}
         </h1>
@@ -221,8 +219,8 @@ export default function Field() {
       {rest.length > 0 && (
         <>
           <hr className="rule my-[clamp(2.75rem,6vw,4.25rem)]" />
-          <section aria-label="Other missions available to you">
-            <h2 className="section-label mb-5">The rest of your practice</h2>
+          <section aria-label="More scenarios to practise">
+            <h2 className="section-label mb-5">More scenarios to practise</h2>
             <ul className="m-0 list-none p-0">
               {rest.map((m) => {
                 const later = m.availability === "later";
@@ -252,7 +250,7 @@ export default function Field() {
                       </span>
                       {later && (
                         <span className="meta flex-none self-center">
-                          not yet relevant
+                          recommended later
                         </span>
                       )}
                       <Chevron
@@ -264,16 +262,16 @@ export default function Field() {
                       <div className="animate-fadeUp px-1 pb-[1.35rem]">
                         {later ? (
                           <p className="m-0 max-w-[52ch] text-[0.9rem] text-ink-2">
-                            This surfaces when it becomes your most useful next
-                            rep. Right now that&rsquo;s{" "}
+                            Best after a few more scenarios. Right now{" "}
                             <span className="font-semibold text-ink">
                               {recommended.title}
-                            </span>
+                            </span>{" "}
+                            is the one to practise
                             {gap && (
                               <>
                                 {" "}
-                                — it closes your{" "}
-                                {COMPETENCY_META[gap].label} gap first
+                                — it strengthens your{" "}
+                                {COMPETENCY_META[gap].label} first
                               </>
                             )}
                             .
@@ -296,7 +294,7 @@ export default function Field() {
                               <Arrow className="arr" width={15} />
                             </button>
                             <p className="mt-[0.95rem] text-[0.85rem] text-ink-2">
-                              Your recommendation is still{" "}
+                              Your recommended scenario is still{" "}
                               <span className="font-semibold text-ink">
                                 {recommended.title}
                               </span>
@@ -316,7 +314,18 @@ export default function Field() {
 
       <hr className="rule my-[clamp(2.75rem,6vw,4.25rem)]" />
 
-      <CapabilityRegister profile={profile} gap={gap} evidence={evidence} />
+      {hasReps ? (
+        <CapabilityRegister profile={profile} gap={gap} evidence={evidence} />
+      ) : (
+        <section aria-label="Your five AI capabilities">
+          <h2 className="section-label mb-4">Your five AI capabilities</h2>
+          <p className="max-w-measure text-[1.02rem] leading-relaxed text-ink-2">
+            Complete your first scenario to establish your starting Field
+            Profile — how you handle context, direction, iteration,
+            verification, and synthesis.
+          </p>
+        </section>
+      )}
     </main>
   );
 }
@@ -414,14 +423,14 @@ function FieldSaveLine() {
 
   return (
     <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-hairline pt-3 text-[0.82rem] text-ink-3">
-      <span>Only reachable in this browser.</span>
+      <span>Your Field Profile is only saved in this browser.</span>
       <button
         type="button"
         onClick={connect}
         disabled={linking}
         className="btn--quiet inline-flex items-center gap-[0.5ch] text-accent"
       >
-        {linking ? "Connecting…" : "Connect an account to keep it"}
+        {linking ? "Saving…" : "Save it with Google"}
         <Arrow width={13} />
       </button>
       <button type="button" onClick={dismiss} className="btn--quiet ml-auto">

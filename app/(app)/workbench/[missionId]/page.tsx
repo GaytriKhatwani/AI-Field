@@ -45,7 +45,7 @@ function tableTargetColumn(columns: { id: string; label: string }[]): string {
 function errorText(code: string | undefined): string {
   switch (code) {
     case "ceiling_reached":
-      return "[You've reached this attempt's exchange ceiling. Submit your deliverable when it's ready.]";
+      return "[You've reached this session's message limit. Finish practice when your deliverable is ready.]";
     case "rate_limited":
       return "[You're sending messages too quickly. Wait a moment and try again.]";
     case "unauthenticated":
@@ -89,11 +89,32 @@ export default function Workbench() {
   // also carries a focusable path into the deliverable).
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [emptyHint, setEmptyHint] = useState(false);
+  // First-visit-only orientation cue (not a multi-step tour). Dismissed for good
+  // once seen, per-device.
+  const [showGuide, setShowGuide] = useState(false);
   // draft persistence: the workbench is the longest-dwell surface, so the
   // transcript + given resources + half-built deliverable survive a refresh or
   // an accidental navigation instead of being lost with the React state.
   const [restored, setRestored] = useState(false);
   const draftKey = `aifield:wb:${params.missionId}`;
+
+  // first Workbench visit: show the orientation cue once
+  useEffect(() => {
+    try {
+      if (localStorage.getItem("aifield.wbGuideSeen") !== "1") setShowGuide(true);
+    } catch {
+      /* private mode — just skip the cue */
+    }
+  }, []);
+
+  function dismissGuide() {
+    try {
+      localStorage.setItem("aifield.wbGuideSeen", "1");
+    } catch {
+      /* ignore */
+    }
+    setShowGuide(false);
+  }
 
   // clear the landing flash after it plays
   useEffect(() => {
@@ -169,7 +190,7 @@ export default function Workbench() {
   if (!mission) {
     return (
       <main className="mx-auto max-w-reading px-6 py-24">
-        <p className="text-ink-2">That mission isn&rsquo;t available.</p>
+        <p className="text-ink-2">That scenario isn&rsquo;t available.</p>
         <button className="btn--quiet mt-4" onClick={() => router.push("/field")}>
           Back to the Field
         </button>
@@ -279,9 +300,9 @@ export default function Workbench() {
       const id = res.ok ? (data.attemptId ?? attemptId) : null;
       if (!id) {
         setSubmitError(
-          "Couldn't hand in your deliverable. Your work is safe — try again in a moment.",
+          "Couldn't finish practice just now. Your work is safe — try again in a moment.",
         );
-        setAnnounce("Submission failed. Try again.");
+        setAnnounce("Couldn't finish practice. Try again.");
         setSubmitting(false);
         return;
       }
@@ -302,9 +323,9 @@ export default function Workbench() {
       router.push(`/evaluating?attemptId=${id}`);
     } catch {
       setSubmitError(
-        "Couldn't reach the examiner. Your work is safe — check your connection and try again.",
+        "Couldn't start your practice review. Your work is safe — check your connection and try again.",
       );
-      setAnnounce("Submission failed. Try again.");
+      setAnnounce("Couldn't finish practice. Try again.");
       setSubmitting(false);
     }
   }
@@ -356,7 +377,7 @@ export default function Workbench() {
       }));
     }
     setFlash(f.id);
-    setAnnounce(`Added to ${f.label}.`);
+    setAnnounce(`Used in ${f.label}.`);
     setMode("deliverable");
     requestAnimationFrame(() =>
       fieldRefs.current[f.id]?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
@@ -425,10 +446,10 @@ export default function Workbench() {
     // gamified-countdown the brand forbids). Only speak up once past the typical
     // range, as reassurance rather than a score.
     if (atCeiling)
-      return "You've reached this attempt's exchange ceiling. Submit when your deliverable is ready.";
+      return "You've reached this session's message limit. Finish practice when your deliverable is ready.";
     if (userTurns > 8)
-      return "Past the usual 4–8 exchanges — that's fine. Submit when your deliverable holds up.";
-    return "Most operators finish in 4–8 exchanges.";
+      return "Past the usual 4–8 messages — that's fine. Finish when your deliverable holds up.";
+    return "Most people finish in 4–8 messages.";
   }, [atCeiling, userTurns]);
 
   return (
@@ -467,7 +488,7 @@ export default function Workbench() {
             // touch, keyboard focus, and screen readers).
             if (deliverableEmpty) {
               setEmptyHint(true);
-              setAnnounce("Add at least one item to your deliverable before you can hand it in.");
+              setAnnounce("Add at least one item to your deliverable before you can finish practice.");
               return;
             }
             setEmptyHint(false);
@@ -478,18 +499,46 @@ export default function Workbench() {
           className="btn flex-none"
           style={{ padding: "0.6em 1.2em", fontSize: "0.9rem" }}
         >
-          {submitting ? "Submitting…" : "Submit mission"}
+          {submitting ? "Finishing…" : "Finish practice"}
           <Arrow className="arr" width={15} />
         </button>
       </header>
 
-      {/* hand-in confirmation — submit is a point of no return, so it asks first
+      {/* first-visit orientation cue — a single dismissible row, never a tour */}
+      {showGuide && (
+        <div className="flex flex-none flex-wrap items-center gap-x-5 gap-y-2 border-b border-hairline bg-raised px-[clamp(1rem,3vw,1.75rem)] py-2.5 animate-fadeUp">
+          <p className="meta flex-none text-ink-2">How the Workbench works</p>
+          <ol className="m-0 flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1 list-none p-0 text-[0.82rem] leading-snug text-ink">
+            {[
+              "Choose useful materials",
+              "Ask the AI for help",
+              "Check and improve its work",
+              "Build your deliverable",
+            ].map((s, i) => (
+              <li key={s} className="flex items-baseline gap-1.5">
+                <span aria-hidden className="num text-ink-3">
+                  {i + 1}
+                </span>
+                {s}
+              </li>
+            ))}
+          </ol>
+          <button type="button" onClick={dismissGuide} className="btn--quiet flex-none">
+            Got it
+          </button>
+        </div>
+      )}
+
+      {/* finish confirmation — finishing is a point of no return, so it asks first
           and surfaces any failure instead of silently re-enabling the button */}
       {confirming && (
         <div className="flex flex-none flex-wrap items-center gap-x-5 gap-y-3 border-b border-hairline bg-raised px-[clamp(1rem,3vw,1.75rem)] py-3 animate-fadeUp">
           <p className="min-w-0 flex-1 text-[0.9rem] leading-snug text-ink">
-            This hands your deliverable to the examiner.{" "}
-            <span className="text-ink-2">You can&rsquo;t edit it after this.</span>
+            <span className="font-semibold">Ready to finish?</span>{" "}
+            <span className="text-ink-2">
+              Your deliverable will be reviewed along with how you worked — you
+              can&rsquo;t edit it afterward.
+            </span>
           </p>
           {submitError && (
             <p role="alert" className="w-full text-[0.85rem] leading-snug" style={{ color: "var(--warn)" }}>
@@ -516,7 +565,7 @@ export default function Workbench() {
               className="btn flex-none"
               style={{ padding: "0.55em 1.1em", fontSize: "0.85rem" }}
             >
-              {submitting ? "Handing in…" : submitError ? "Try again" : "Hand in"}
+              {submitting ? "Finishing…" : submitError ? "Try again" : "Finish and review"}
               <Arrow className="arr" width={14} />
             </button>
           </div>
@@ -531,9 +580,10 @@ export default function Workbench() {
           className="flex flex-none items-center gap-3 border-b border-hairline bg-raised px-[clamp(1rem,3vw,1.75rem)] py-2.5 animate-fadeUp"
         >
           <p className="min-w-0 flex-1 text-[0.85rem] leading-snug text-ink">
-            Add at least one item before you hand in. Direct the AI, then use{" "}
-            <span className="font-semibold">Add to a section</span> on its reply
-            — or type into a section directly.
+            Add at least one item before you finish. Work with the AI, then
+            select part of a reply and use{" "}
+            <span className="font-semibold">Use in deliverable</span> — or type
+            into a section directly.
           </p>
           <button
             type="button"
@@ -561,7 +611,7 @@ export default function Workbench() {
                 mode === m ? "inset 0 -2px 0 var(--accent)" : "inset 0 -2px 0 transparent",
             }}
           >
-            {m === "deliverable" ? "Deliverable" : "Instrument"}
+            {m === "deliverable" ? "Deliverable" : "Work with AI"}
           </button>
         ))}
       </div>
@@ -575,7 +625,7 @@ export default function Workbench() {
           className={`min-h-0 flex-col border-hairline md:flex md:border-r ${
             mode === "instrument" ? "flex" : "hidden md:flex"
           }`}
-          aria-label="Resources and the AI instrument"
+          aria-label="Materials and the AI"
         >
           {/* scroll region: resources + transcript scroll here, above the fixed
               composer footer — so a reply never renders on both sides of it */}
@@ -587,7 +637,7 @@ export default function Workbench() {
               Briefing so the operator isn't scored on a rule that's off-screen */}
           {mission.briefing.constraints.length > 0 && (
             <div className="mb-7">
-              <h2 className="section-label mb-2.5">Working rules</h2>
+              <h2 className="section-label mb-2.5">What matters</h2>
               <ul className="m-0 list-none space-y-1.5 p-0">
                 {mission.briefing.constraints.map((c, i) => (
                   <li
@@ -605,8 +655,12 @@ export default function Workbench() {
             </div>
           )}
 
-          {/* resources */}
-          <h2 className="section-label mb-4">Resources</h2>
+          {/* materials */}
+          <h2 className="section-label mb-2">Materials</h2>
+          <p className="mb-4 max-w-[42ch] text-[0.82rem] leading-snug text-ink-2">
+            Choose what the AI needs. It only receives the materials you share
+            with it.
+          </p>
           <ul className="m-0 list-none space-y-2 p-0">
             {mission.resources.map((r) => {
               const isGiven = given.includes(r.id);
@@ -631,23 +685,24 @@ export default function Workbench() {
                       <button
                         type="button"
                         onClick={() => ungiveResource(r.id)}
-                        aria-label={`Take back ${r.label} from the AI`}
-                        title="Take it back"
+                        aria-label={`Remove ${r.label} from the AI`}
+                        title="Remove from AI"
                         className="group/give flex min-h-[44px] flex-none items-center gap-[0.5ch] whitespace-nowrap rounded-sm px-1.5 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.09em] transition-colors hover:text-ink"
                         style={{ color: "var(--good)" }}
                       >
                         <Check width={12} height={10} />
-                        <span className="group-hover/give:hidden">Given to the AI</span>
-                        <span className="hidden group-hover/give:inline">Take it back</span>
+                        <span className="group-hover/give:hidden">Shared with AI</span>
+                        <span className="hidden group-hover/give:inline">Remove from AI</span>
                       </button>
                     ) : (
                       <button
                         type="button"
                         onClick={() => giveResource(r.id)}
+                        aria-label={`Share ${r.label} with the AI`}
                         className="btn btn--ghost flex-none"
                         style={{ padding: "0.5em 0.85em", fontSize: "0.8rem", minHeight: "44px" }}
                       >
-                        Give to the AI
+                        Share with AI
                       </button>
                     )}
                   </div>
@@ -660,17 +715,16 @@ export default function Workbench() {
               );
             })}
           </ul>
-          <p className="mt-3 text-[0.8rem] leading-snug text-ink-3">
-            The AI only knows what you give it. Deciding what it needs is part of
-            the rep.
+          {/* work with the AI / transcript */}
+          <h2 className="section-label mb-1.5 mt-8">Work with the AI</h2>
+          <p className="mb-3 max-w-[42ch] text-[0.82rem] leading-snug text-ink-2">
+            Ask it to help with the task. It follows your instructions, but it
+            won&rsquo;t tell you what to do or fix weak decisions for you.
           </p>
-
-          {/* the instrument / transcript */}
-          <h2 className="section-label mb-3 mt-8">Direct the AI</h2>
           <div className="min-h-0">
             {messages.length === 0 && !thinking ? (
               <p className="max-w-[38ch] text-[0.9rem] leading-relaxed text-ink-3">
-                Give it an instruction below. It executes what you ask — it
+                Tell it what you need below. It does what you ask — it
                 won&rsquo;t coach you, fill in what you left out, or fix a vague
                 request.
               </p>
@@ -718,11 +772,11 @@ export default function Workbench() {
                             (pickerFor === m.id ? (
                               <span
                                 role="group"
-                                aria-label="Add this reply to your deliverable"
+                                aria-label="Use this reply in your deliverable"
                                 className="mt-2 inline-flex flex-wrap items-center gap-1 rounded-sm border border-hairline bg-raised p-1"
                               >
                                 <span className="meta whitespace-nowrap px-1 text-ink-3">
-                                  Add to
+                                  Use in
                                 </span>
                                 {spec.fields.map((f) => (
                                   <button
@@ -737,7 +791,7 @@ export default function Workbench() {
                                 <button
                                   type="button"
                                   onClick={() => setPickerFor(null)}
-                                  aria-label="Cancel adding to deliverable"
+                                  aria-label="Cancel using in deliverable"
                                   className="flex h-6 w-6 items-center justify-center rounded-sm text-ink-3 transition-colors hover:text-ink"
                                 >
                                   ×
@@ -749,7 +803,7 @@ export default function Workbench() {
                                 onClick={() => setPickerFor(m.id)}
                                 className="mt-1.5 inline-flex min-h-[24px] items-center py-1 text-[0.78rem] font-semibold text-ink-3 transition-colors hover:text-accent"
                               >
-                                + Add to a section
+                                + Use in deliverable
                               </button>
                             ))}
                         </>
@@ -803,15 +857,15 @@ export default function Workbench() {
                 data-gramm_editor="false"
                 data-enable-grammarly="false"
                 disabled={atCeiling}
-                aria-label="Type an instruction to the AI"
-                placeholder={atCeiling ? "Exchange ceiling reached." : "Type an instruction…"}
+                aria-label="Tell the AI what you need"
+                placeholder={atCeiling ? "Message limit reached." : "Tell the AI what you need…"}
                 className="min-h-0 flex-1 resize-none bg-transparent px-2 py-1 text-[0.92rem] leading-relaxed text-ink outline-none placeholder:text-ink-3 disabled:opacity-50"
               />
               <button
                 type="button"
                 onClick={send}
                 disabled={!draft.trim() || thinking || atCeiling}
-                aria-label="Direct the AI"
+                aria-label="Send instruction"
                 className="btn flex-none"
                 style={{ padding: "0.6em 0.9em" }}
               >
@@ -879,10 +933,10 @@ export default function Workbench() {
 
           {deliverableEmpty && (
             <p className="mt-8 max-w-[44ch] text-[0.9rem] leading-relaxed text-ink-3">
-              This is what you&rsquo;ll hand in. Direct the AI, then use{" "}
-              <span className="font-semibold text-ink-2">Add to a section</span>{" "}
-              on its reply — or select part of it, or type here directly. You
-              decide what&rsquo;s worth keeping.
+              This is what you&rsquo;ll produce. Work with the AI, then select
+              part of a reply and use{" "}
+              <span className="font-semibold text-ink-2">Use in deliverable</span>{" "}
+              — or type here directly. You decide what&rsquo;s worth keeping.
             </p>
           )}
         </section>
@@ -895,12 +949,12 @@ export default function Workbench() {
         <div
           ref={captureRef}
           role="group"
-          aria-label="Add selection to your deliverable"
+          aria-label="Use selection in your deliverable"
           className="fixed z-50 flex items-center gap-0.5 rounded-sm border border-hairline bg-raised p-1 shadow-layer animate-fadeUp"
           style={{ left: capture.x, top: capture.y - 10, transform: "translate(-50%, -100%)" }}
           onMouseDown={(e) => e.preventDefault()}
         >
-          <span className="meta whitespace-nowrap px-1.5 text-ink-3">Add to</span>
+          <span className="meta whitespace-nowrap px-1.5 text-ink-3">Use in</span>
           {spec.fields.map((f) => (
             <button
               key={f.id}

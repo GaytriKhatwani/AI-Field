@@ -56,7 +56,7 @@ export function Landing() {
   const cta = (
     <div className="mt-[2.4rem] flex flex-wrap items-center gap-x-6 gap-y-3">
       <button type="button" onClick={start} disabled={starting} className="btn">
-        {starting ? "Starting…" : "Try your first mission"}
+        {starting ? "Starting…" : "Try your first scenario"}
         {!starting && <Arrow className="arr" />}
       </button>
       <span className="meta">No signup · about 10 minutes</span>
@@ -94,12 +94,11 @@ export function Landing() {
                 className="display text-ink"
                 style={{ fontSize: "clamp(2.6rem,6vw,4.4rem)", maxWidth: "13ch" }}
               >
-                Get better at using AI for real work.
+                Get better at doing real work with AI.
               </h1>
               <p className="mt-[1.7rem] max-w-[40ch] text-[clamp(1.05rem,1.5vw,1.3rem)] font-medium leading-[1.45] text-ink">
-                Take on a realistic work assignment, tackle it with a real AI, and
-                get an honest, specific read on how you worked — and what to
-                sharpen next.
+                Practise realistic workplace scenarios, see how you approach them,
+                and learn what to improve next.
               </p>
               {cta}
               {error && (
@@ -117,29 +116,53 @@ export function Landing() {
 
       {/* Below the hero the page returns to an editorial reading width. */}
       <div className="mx-auto max-w-reading px-[clamp(1.25rem,5vw,3.25rem)]">
-        {/* WHAT YOU'LL DO — concrete workplace assignments; the anti-course line */}
-        <section aria-label="What you'll do" className="max-w-measure pt-[clamp(3rem,7vw,5rem)]">
-          <h2 className="section-label mb-4">What you&rsquo;ll do</h2>
-          <p className="text-[1.05rem] leading-relaxed text-ink">
-            You get a real piece of work — a messy meeting to pull apart, a shaky
-            AI-drafted report, a brief that&rsquo;s missing half the details. You
-            handle it with a real AI: tell it what you need, push back on what it
-            gives you, and decide what&rsquo;s good enough to send.{" "}
-            <span className="font-semibold">
-              This isn&rsquo;t a course — no lessons, no prompt lists. You do the work.
-            </span>
+        {/* WHY IT MATTERS — the case for practising the process, not prompts */}
+        <section aria-label="Why it matters" className="max-w-measure pt-[clamp(3rem,7vw,5rem)]">
+          <h2
+            className="heading text-ink"
+            style={{ fontSize: "clamp(1.5rem,3.6vw,2.05rem)", lineHeight: 1.12 }}
+          >
+            Good AI work is more than writing a prompt.
+          </h2>
+          <p className="mt-4 text-[1.05rem] leading-relaxed text-ink-2">
+            You need to choose the right context, give clear direction, question
+            the output, improve it, and turn it into something useful.
           </p>
         </section>
 
         <hr className="rule my-[clamp(2.75rem,7vw,4.5rem)]" />
 
-        {/* WHAT YOU GET — the payoff is the evidence-backed read, not a dashboard */}
+        {/* WHAT YOU'LL DO — the real loop, previewed in the hero fragment */}
+        <section aria-label="What you'll do" className="max-w-measure">
+          <h2
+            className="heading text-ink"
+            style={{ fontSize: "clamp(1.5rem,3.6vw,2.05rem)", lineHeight: 1.12 }}
+          >
+            Work through a realistic situation.
+          </h2>
+          <p className="mt-4 text-[1.05rem] leading-relaxed text-ink-2">
+            You&rsquo;ll get a brief, source materials, an AI to work with, and a
+            deliverable to produce. What you do with them is up to you.
+          </p>
+          <p className="meta mt-5">
+            Brief → choose materials → work with the AI → build your deliverable →
+            your review
+          </p>
+        </section>
+
+        <hr className="rule my-[clamp(2.75rem,7vw,4.5rem)]" />
+
+        {/* WHAT YOU GET — the payoff is the evidence-backed review, not a dashboard */}
         <section aria-label="What you get">
-          <h2 className="section-label mb-4">What you get</h2>
-          <p className="max-w-measure text-[1.05rem] leading-relaxed text-ink">
-            Then you get an honest read on how you worked — specific, and backed by
-            what you actually did. Not a score. The kind of feedback a sharp
-            colleague would give you:
+          <h2
+            className="heading text-ink"
+            style={{ fontSize: "clamp(1.5rem,3.6vw,2.05rem)", lineHeight: 1.12 }}
+          >
+            See how you worked — not just what the AI produced.
+          </h2>
+          <p className="mt-4 max-w-measure text-[1.05rem] leading-relaxed text-ink-2">
+            Your review highlights what you handled well, what you missed, and
+            what to practise next.
           </p>
 
           <ExampleRead />
@@ -199,7 +222,7 @@ present: Priya (PM), Marcus (eng), Dana (design), Sam (marketing), + Leo joined 
       >
         <p className="meta mb-2.5 flex items-center gap-2 text-ink-3">
           <span aria-hidden className="inline-block h-px w-5 bg-hairline" />
-          You direct the AI
+          You work with the AI
         </p>
         <div className="space-y-2 border-l border-hairline pl-4">
           <p className="text-[0.86rem] leading-snug text-ink">
@@ -221,7 +244,7 @@ present: Priya (PM), Marcus (eng), Dana (design), Sam (marketing), + Leo joined 
         style={{ animationDelay: "360ms" }}
       >
         <p className="meta mb-5 flex items-baseline justify-between gap-4">
-          <span>Your read</span>
+          <span>Your review</span>
           <span className="text-ink-3" style={{ letterSpacing: "0.14em" }}>
             example
           </span>
@@ -238,7 +261,7 @@ present: Priya (PM), Marcus (eng), Dana (design), Sam (marketing), + Leo joined 
           </div>
           <div>
             <dt className="section-label mb-1.5" style={{ color: "var(--warn)" }}>
-              What you missed
+              What to improve next
             </dt>
             <dd className="m-0 text-[0.96rem] leading-relaxed text-ink">
               You let a due date the notes never gave slip through — an invented
@@ -246,7 +269,7 @@ present: Priya (PM), Marcus (eng), Dana (design), Sam (marketing), + Leo joined 
             </dd>
           </div>
           <div>
-            <dt className="section-label mb-1.5">What to practice next</dt>
+            <dt className="section-label mb-1.5">What to practise next</dt>
             <dd className="m-0 text-[0.96rem] leading-relaxed text-ink">
               Checking the AI&rsquo;s work before you rely on it.
             </dd>
@@ -266,7 +289,7 @@ function ExampleRead() {
   return (
     <div className="mt-7 max-w-measure animate-fadeUp rounded-sm border border-hairline bg-raised px-[clamp(1.1rem,3vw,1.75rem)] py-[clamp(1.3rem,3vw,1.75rem)]">
       <p className="meta mb-6 flex items-baseline justify-between gap-4">
-        <span>Your read</span>
+        <span>Your review</span>
         <span className="text-ink-3" style={{ letterSpacing: "0.14em" }}>
           example
         </span>
@@ -301,8 +324,8 @@ function ExampleRead() {
 
       <hr className="rule my-5" />
       <p className="m-0 text-[0.88rem] leading-relaxed text-ink-3">
-        Every assignment quietly builds a record of how you&rsquo;re growing —
-        across the five habits of strong AI work.
+        Every scenario quietly builds your Field Profile — across the five
+        capabilities of strong AI work.
       </p>
     </div>
   );

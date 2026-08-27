@@ -116,7 +116,7 @@ export async function POST(req: Request) {
         user_id: userId,
         seq: seq++,
         kind: "attach_resource",
-        detail: { resourceId: id, label: `Gave the AI: ${r.label}` },
+        detail: { resourceId: id, label: `Shared "${r.label}" with the AI` },
       };
     });
     await supabase.from("attempt_events").insert(rows);

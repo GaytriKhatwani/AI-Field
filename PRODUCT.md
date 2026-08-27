@@ -10,7 +10,7 @@ web
 
 ## Stack
 
-Settled in `plan.md` (not re-opened at init): Next.js (App Router) + React + Tailwind + **selective** shadcn/ui primitives, on Vercel with continuous deploy from GitHub. Supabase (Postgres + anonymous auth + Row Level Security; publishable/secret key naming). Gemini as the only AI provider (`gemini-3.7-flash`, configurable via `GEMINI_MODEL`) behind one thin module `lib/ai/provider.ts`. **All AI runs server-side; secret keys never reach the browser.**
+Settled in `plan.md` (not re-opened at init): Next.js (App Router) + React + Tailwind + **selective** shadcn/ui primitives, on Vercel with continuous deploy from GitHub. Supabase (Postgres + anonymous auth + Row Level Security; publishable/secret key naming). Anthropic Claude as the only AI provider (Claude Sonnet 5, configurable via `ANTHROPIC_MODEL`) behind one thin module `lib/ai/provider.ts` — switched from Gemini during M1, whose free-tier ~20 req/day cap blocked the discrimination gate. Behaviour is configured via structured output + effort level (workbench low, judge high), not sampling params. **All AI runs server-side; secret keys never reach the browser.**
 
 Note for design work: the component library is implementation infrastructure, not the product's visual identity. shadcn/ui is a starting set of primitives to restyle, not the look.
 
@@ -45,7 +45,7 @@ A single self-contained loop across **five surfaces**, designed to feel like *en
 4. **Workbench** — mission context + AI chat + attachable resources on one side, the deliverable being built on the other.
 5. **Debrief** — coaching, which bands moved (before → after), and the single next mission.
 
-The loop closes back to a new briefing. No signup wall: an anonymous account is created invisibly and progress persists per browser. Because the MVP runs on Gemini's free tier, **all mission materials are synthetic/hand-authored** and the workbench carries a standing "don't paste confidential data" warning.
+The loop closes back to a new briefing. No signup wall: an anonymous account is created invisibly and progress persists per browser, with an optional Google sign-in offered after the first debrief to keep what was earned. **All mission materials are synthetic/hand-authored** — a deliberate design choice so the practice ground stays independent of real company data — and the workbench carries a standing safeguard to use only the provided materials and avoid entering confidential, proprietary, or sensitive information.
 
 ## Capabilities and Constraints
 
@@ -59,7 +59,7 @@ The loop closes back to a new briefing. No signup wall: an anonymous account is 
 | **Verification** | Did they catch the AI's mistakes, gaps, and made-up claims? |
 | **Synthesis** | Did they turn AI output into something genuinely useful? |
 
-- Stored internally 0–100, **always displayed as bands** (`not shown · emerging · developing · proficient · strong`), never a fake-precise number.
+- Stored internally 0–100, **always displayed as capability states** (`Not observed yet · Starting to show · Developing · Consistent · A clear strength`), never a fake-precise number.
 - Each mission declares **competency weights**; a competency not meaningfully exercised returns `not_shown` and **does not move** the profile (finishing missions doesn't inflate every bar).
 - **Materials are attach-by-choice**, never auto-injected — recognising what the AI needs is part of the Context measurement.
 - Soft nudge ("most operators finish in 4–8 exchanges") + hard server-side ceiling (~12 messages/attempt). **Turn count never affects any score.**
@@ -70,10 +70,10 @@ The loop closes back to a new briefing. No signup wall: an anonymous account is 
 
 ## Brand Commitments
 
-- **Name:** AI Field. The user is addressed as an **"Operator"**; their profile is the **"Operator Profile."**
-- **Ubiquitous language (use consistently):** The Field (home/mission map), Mission, Briefing, Workbench, Resources, Deliverable, Submit, Examiner / judge, Debrief, Operator Profile, the five competency names, and the band labels above.
-- **Voice:** honest, specific, and earned; coaching, never grading; plain over clever. Tone is pitched to the operator's stated experience, but the **standard is identical for everyone** so the profile means something.
-- **Binding anti-references (the experience we must NOT create):** an LMS / course dashboard (no tables, no numeric grades), a generic chatbot, a gamified turn-count countdown, and a big numeric score as the headline. A map, not a dashboard.
+- **Name:** AI Field. The user is addressed directly as **"you"** (never "operator"); their accumulated profile is the **"Field Profile."** _(As of 2026-08-27 the product moved to a single practice-first language system, replacing the old gym/field-ops/assessment mix; internal code identifiers — `mission`, `missionId`, `attempt`, `debrief` — are unchanged.)_
+- **Ubiquitous language (use consistently) — one practice-first metaphor:** The Field (home), **practice scenario / scenario** (never "mission" or "rep"), **Brief** (never "Briefing"), **Workbench**, **Materials** (never "Resources"), **Share with AI / Remove from AI** (never "Give to the AI / Take it back"), **Deliverable**, **Finish practice** (never "Submit" / "Hand in"), **Practice Review** (the review — never "examiner" / "Debrief" / "Evaluation"), **Field Profile** (never "Operator Profile"), the **five AI capabilities** (the five competency names), and the capability states: **Not observed yet · Starting to show · Developing · Consistent · A clear strength**. The recommendation is the **Next practice**; the practice gap is the **best area to practise next** (never "your gap"). "Direction" stays a capability name; avoid "direct" as the verb for working with the AI.
+- **Voice:** honest, specific, and earned; a **review**, never a grade; plain over clever; written to **"you"**. A serious place to practise without real-world consequences — **not** a test of whether you are a competent AI operator. Remove surveillance, certification, pass/fail, military, and school-like language. Tone is pitched to the person's stated experience, but the **standard is identical for everyone** so the profile means something.
+- **Binding anti-references (the experience we must NOT create):** an LMS / course dashboard (no tables, no numeric grades), a generic chatbot, a gamified turn-count countdown, streaks/badges/points/levels, and a big numeric score as the headline. A map, not a dashboard.
 
 ## Evidence on Hand
 

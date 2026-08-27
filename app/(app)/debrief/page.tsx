@@ -4,9 +4,16 @@ import { Suspense, useEffect, useRef, useState, type ReactNode, type CSSProperti
 import { useRouter, useSearchParams } from "next/navigation";
 import { useField } from "@/lib/store";
 import { getMission } from "@/lib/missions";
-import { COMPETENCY_META, bandLabel } from "@/lib/competencies";
+import {
+  COMPETENCY_META,
+  COMPETENCY_ORDER,
+  bandLabel,
+  bandToState,
+  scoreToBand,
+  type Profile,
+} from "@/lib/competencies";
 import { Marker } from "@/components/CapabilityRegister";
-import { bandToState } from "@/lib/competencies";
+import type { Competency } from "@/lib/missions/types";
 import { track, EVENTS } from "@/lib/analytics/client";
 import { ACCOUNT_LINKING_ENABLED } from "@/lib/flags";
 import { Arrow, Back, GoogleG } from "@/components/icons";
@@ -111,9 +118,9 @@ function DebriefInner() {
   if (isReview && reviewError) {
     return (
       <main className="mx-auto flex min-h-screen max-w-reading flex-col justify-center px-[clamp(1.25rem,5vw,3.25rem)] py-16">
-        <p className="section-label mb-5">Couldn&rsquo;t open this rep</p>
+        <p className="section-label mb-5">Couldn&rsquo;t open this scenario</p>
         <h1 className="display max-w-[16ch] text-ink" style={{ fontSize: "clamp(1.9rem,5vw,2.8rem)" }}>
-          That debrief didn&rsquo;t load.
+          That review didn&rsquo;t load.
         </h1>
         <button type="button" onClick={() => router.push("/field")} className="btn mt-8 self-start">
           Back to the Field
@@ -125,7 +132,7 @@ function DebriefInner() {
   const d = isReview ? review?.debrief : lastDebrief;
 
   if (!hydrated || !d)
-    return <Loading label={isReview ? "Opening this rep…" : undefined} />;
+    return <Loading label={isReview ? "Opening this scenario…" : undefined} />;
 
   const moved = d.moves.filter((m) => m.moved);
   // A profile still entirely at not-yet-shown is a baseline read — the first rep,
@@ -134,8 +141,8 @@ function DebriefInner() {
   // so a beginner's first debrief doesn't read as a failure to advance.
   const atBaseline = d.moves.every((m) => m.before === "not_shown");
   const headerTitle = isReview
-    ? (getMission(review!.missionId)?.title ?? "Mission")
-    : (completed[0]?.title ?? "Mission");
+    ? (getMission(review!.missionId)?.title ?? "Scenario")
+    : (completed[0]?.title ?? "Scenario");
   const practiceAfter = bandLabel(
     d.moves.find((m) => m.competency === d.practice)?.after ?? "not_shown",
   );
@@ -165,15 +172,15 @@ function DebriefInner() {
           folio above it, and one framing line says what this read is. */}
       <header className="mt-[clamp(2rem,6vw,3.5rem)] animate-riseIn">
         <p className="meta mb-3">
-          {headerTitle} · {isReview ? "Reviewing a past rep" : "Debrief"}
+          {headerTitle} · {isReview ? "Reviewing past practice" : "Practice review"}
         </p>
         <h1 className="display text-ink" style={headlineStyle(d.headline)}>
           {d.headline}
         </h1>
         <p className="mt-4 max-w-[46ch] text-[0.95rem] leading-relaxed text-ink-2">
           {isReview
-            ? "The read from this past rep — how you directed the AI that time."
-            : "An honest read of how you worked this rep — coaching, not a grade. What landed, what to sharpen, and the rep that follows."}
+            ? "The review of this past practice — how you worked with the AI that time."
+            : "An honest review of how you worked — what landed, what to improve, and the practice that follows."}
         </p>
       </header>
 
@@ -184,6 +191,30 @@ function DebriefInner() {
       <Row as="section" aria-label="What worked" rail={<h2 className="section-label">What worked</h2>}>
         <p className="max-w-measure text-[1.02rem] leading-relaxed text-ink">{d.worked}</p>
       </Row>
+
+      <hr className="rule my-[clamp(2.5rem,6vw,3.5rem)]" />
+
+      {/* what to improve — the miss named, then a stronger approach */}
+      <div className="space-y-[clamp(1.75rem,4vw,2.75rem)]">
+        <Row
+          as="section"
+          aria-label="What to improve next"
+          rail={
+            <h2 className="section-label" style={{ color: "var(--warn)" }}>
+              What to improve next
+            </h2>
+          }
+        >
+          <p className="max-w-measure text-[1.02rem] leading-relaxed text-ink">{d.missed}</p>
+        </Row>
+        <Row
+          as="section"
+          aria-label="A stronger approach"
+          rail={<h2 className="section-label">A stronger approach</h2>}
+        >
+          <p className="max-w-measure text-[1.05rem] leading-relaxed text-ink-2">{d.expert}</p>
+        </Row>
+      </div>
 
       <hr className="rule my-[clamp(2.5rem,6vw,3.5rem)]" />
 
@@ -245,45 +276,17 @@ function DebriefInner() {
 
       <hr className="rule my-[clamp(2.5rem,6vw,3.5rem)]" />
 
-      {/* the read — the gap named, then how a strong operator closes it */}
-      <div className="space-y-[clamp(1.75rem,4vw,2.75rem)]">
-        <Row
-          as="section"
-          aria-label="What you missed"
-          rail={
-            <h2 className="section-label" style={{ color: "var(--warn)" }}>
-              What you missed
-            </h2>
-          }
-        >
-          <p className="max-w-measure text-[1.02rem] leading-relaxed text-ink">{d.missed}</p>
-        </Row>
-        <Row
-          as="section"
-          aria-label="How a strong operator does it"
-          rail={<h2 className="section-label">How a strong operator does it</h2>}
-        >
-          <p className="max-w-measure text-[1.05rem] leading-relaxed text-ink-2">{d.expert}</p>
-        </Row>
-      </div>
-
-      <hr className="rule my-[clamp(2.5rem,6vw,3.5rem)]" />
-
       {/* capability movement — in words, no bars, no numbers. A baseline read
           (all still not-yet-shown) is framed as a starting line, not a plateau. */}
       <Row
         as="section"
-        aria-label={atBaseline ? "Where you start" : "What moved"}
-        rail={
-          <h2 className="section-label">
-            {atBaseline ? "Where you start" : "What moved"}
-          </h2>
-        }
+        aria-label="Your Field Profile"
+        rail={<h2 className="section-label">Your Field Profile</h2>}
       >
         {atBaseline && (
           <p className="mb-5 max-w-measure text-[1.02rem] leading-relaxed text-ink">
-            Every capability still reads not-yet-shown. This rep sets the baseline
-            the bands climb from — a starting read, not a score to beat.
+            Every capability still reads not observed yet. This scenario sets your
+            starting Field Profile — a starting read, not a score to beat.
           </p>
         )}
         {moved.length > 0 ? (
@@ -306,19 +309,20 @@ function DebriefInner() {
           </ul>
         ) : atBaseline ? (
           <p className="max-w-measure text-[0.98rem] text-ink-2">
-            Nothing crossed into a new band yet — early reps often read quiet. The
-            bands begin to move as you stack reps; this one marks the baseline
-            they&rsquo;ll climb from.
+            Nothing crossed into a new state yet — early scenarios often read
+            quiet. Your capabilities begin to move as you practise more; this one
+            sets the starting point they climb from.
           </p>
         ) : (
           <p className="max-w-measure text-[0.98rem] text-ink-2">
-            Nothing moved enough to change a band this time — the honest read is
-            that this rep held your ground rather than advancing it.
+            Nothing moved enough to change a state this time — the honest read is
+            that this scenario held your ground rather than advancing it.
           </p>
         )}
         <p className="mt-5 max-w-measure text-[0.88rem] leading-snug text-ink-3">
-          Capabilities this mission didn&rsquo;t call for stayed exactly where they
-          were. Finishing a mission never inflates a bar you didn&rsquo;t use.
+          Capabilities this scenario didn&rsquo;t call for stayed exactly where
+          they were. Finishing a scenario never inflates a capability you
+          didn&rsquo;t use.
         </p>
       </Row>
 
@@ -328,8 +332,8 @@ function DebriefInner() {
           <hr className="rule my-[clamp(2.5rem,6vw,3.5rem)]" />
           <Row
             as="section"
-            aria-label="What you submitted"
-            rail={<h2 className="section-label">What you submitted</h2>}
+            aria-label="What you produced"
+            rail={<h2 className="section-label">What you produced</h2>}
           >
             <div className="space-y-7">
               {mission.deliverable.fields.map((f) => {
@@ -399,8 +403,8 @@ function DebriefInner() {
         /* review: no forward CTA — the recommendation lives on the Field, current */
         <Row as="section" aria-label="Back to your practice" rail={<p className="meta">Next</p>}>
           <p className="max-w-measure text-[0.95rem] leading-relaxed text-ink-2">
-            This is the read from that rep. Your live recommendation — built from
-            everything you&rsquo;ve done since — is waiting on the Field.
+            This is the review of that practice. Your live recommendation — built
+            from everything you&rsquo;ve done since — is waiting on the Field.
           </p>
           <button type="button" onClick={() => router.push("/field")} className="btn mt-6">
             Back to the Field
@@ -408,21 +412,21 @@ function DebriefInner() {
           </button>
         </Row>
       ) : showSave ? (
-        <SaveMoment />
+        <SaveMoment profile={d.newProfile} practice={d.practice} />
       ) : next ? (
         /* live: the gap resolves into the next assignment */
         <Row
           as="section"
-          aria-label="Your next assignment"
+          aria-label="Recommended next practice"
           className="animate-riseIn"
-          rail={<p className="meta">Your next assignment</p>}
+          rail={<p className="meta">Recommended next practice</p>}
         >
           <p className="max-w-[38ch] text-[clamp(1.05rem,2.4vw,1.2rem)] font-medium leading-[1.45] text-ink">
             Because your{" "}
             <span className="font-semibold text-accent">
               {COMPETENCY_META[d.practice].label}
             </span>{" "}
-            is {practiceAfter}, your next rep is built to draw it out.
+            is {practiceAfter}, your next practice focuses on it.
           </p>
           <h2
             className="display mt-6 text-ink"
@@ -458,7 +462,8 @@ function DebriefInner() {
         /* live but the next mission id didn't resolve — degrade, don't crash */
         <Row as="section" aria-label="Back to your practice" rail={<p className="meta">Next</p>}>
           <p className="max-w-measure text-[0.95rem] leading-relaxed text-ink-2">
-            Your read is saved. Head back to the Field to pick up your next rep.
+            Your review is saved. Head back to the Field to pick up your next
+            practice.
           </p>
           <button type="button" onClick={() => router.push("/field")} className="btn mt-6">
             Back to the Field
@@ -470,11 +475,19 @@ function DebriefInner() {
   );
 }
 
-// The first-mission Save moment — inline at the tail of the first live debrief,
-// framed around preserving earned work (not "create an account"). Continue with
-// Google upgrades the anonymous user in place; "Not now" keeps the anonymous
-// progress and continues to the Field, where the offer re-surfaces quietly.
-function SaveMoment() {
+// The first-scenario Save moment — inline at the tail of the first live Practice
+// Review, framed around preserving the Field Profile the person just earned (not
+// "create an account"). It reflects the actual capability result and shows all
+// five states. Continue with Google upgrades the anonymous user in place;
+// "Continue without saving" keeps the anonymous progress and returns to the
+// Field, where the offer re-surfaces quietly.
+function SaveMoment({
+  profile,
+  practice,
+}: {
+  profile: Profile;
+  practice: Competency;
+}) {
   const router = useRouter();
   const { linkGoogle } = useField();
   const [linking, setLinking] = useState(false);
@@ -486,6 +499,22 @@ function SaveMoment() {
     viewed.current = true;
     track(EVENTS.SAVE_PROFILE_VIEWED, {});
   }, []);
+
+  // A short spoken-language summary of the strongest capability, so the moment
+  // reflects what actually happened rather than a generic "results are in".
+  const bestCap = [...COMPETENCY_ORDER].sort((a, b) => profile[b] - profile[a])[0];
+  const bestBand = scoreToBand(profile[bestCap]);
+  const bestLabel = COMPETENCY_META[bestCap].label;
+  const praise =
+    bestBand === "strong"
+      ? `You showed a clear strength in ${bestLabel}.`
+      : bestBand === "proficient"
+        ? `You were consistent on ${bestLabel}.`
+        : bestBand === "developing"
+          ? `You're developing ${bestLabel}.`
+          : bestBand === "emerging"
+            ? `${bestLabel} is starting to show.`
+            : "You've made your first pass across the five capabilities.";
 
   async function connect() {
     if (linking) return;
@@ -508,38 +537,61 @@ function SaveMoment() {
   return (
     <Row
       as="section"
-      aria-label="Keep your work"
+      aria-label="Save your Field Profile"
       className="animate-riseIn"
-      rail={<p className="meta">Keep your work</p>}
+      rail={<p className="meta">Save your profile</p>}
     >
       <p className="max-w-[40ch] text-[clamp(1.05rem,2.4vw,1.2rem)] font-medium leading-[1.45] text-ink">
-        Keep what you just earned.
+        Your first Field Profile is ready.
       </p>
       <p className="mt-3 max-w-measure text-[1.02rem] leading-relaxed text-ink-2">
-        You&rsquo;ve finished your first assignment and got your read. Connect an
-        account to keep it — the assignment, the feedback, the record you&rsquo;ve
-        started, and your next rep — and get back to it from any device.
+        {praise}{" "}
+        <span className="text-ink">
+          {COMPETENCY_META[practice].label} is the best area to practise next.
+        </span>
       </p>
+
+      {/* all five capabilities, including "not observed yet" where it applies */}
+      <ul className="mt-6 m-0 grid max-w-[34rem] list-none grid-cols-1 gap-x-8 gap-y-2.5 p-0 sm:grid-cols-2">
+        {COMPETENCY_ORDER.map((c) => {
+          const { marker, phrase } = bandToState(scoreToBand(profile[c]));
+          const isNext = c === practice;
+          return (
+            <li key={c} className="flex items-baseline gap-[0.6ch]">
+              <span className="mt-[0.2em]">
+                <Marker kind={marker} gap={isNext} />
+              </span>
+              <span className="text-[0.92rem] text-ink">
+                {COMPETENCY_META[c].label}
+              </span>
+              <span className="ml-auto pl-3 text-[0.82rem] text-ink-3">
+                {phrase}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
       <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-3">
         <button type="button" onClick={connect} disabled={linking} className="btn">
           <span className="inline-grid place-items-center rounded-[3px] bg-white p-[3px]">
             <GoogleG />
           </span>
-          {linking ? "Connecting…" : "Continue with Google"}
+          {linking ? "Saving…" : "Save my Field Profile with Google"}
         </button>
         <button type="button" onClick={skip} className="btn--quiet">
-          Not now
+          Continue without saving
         </button>
       </div>
       {error ? (
         <p role="alert" className="mt-4 max-w-measure text-[0.9rem] leading-relaxed text-warn">
-          Couldn&rsquo;t connect that Google account — keep practicing, you can try
+          Couldn&rsquo;t save your profile just now — keep practising, you can try
           again from the Field.
         </p>
       ) : (
         <p className="mt-4 max-w-measure text-[0.85rem] leading-relaxed text-ink-3">
-          It&rsquo;s all saved already — connecting just makes it reachable
-          anywhere, not only in this browser.
+          Save your progress and keep building your profile across future
+          scenarios.
         </p>
       )}
     </Row>

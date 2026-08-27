@@ -62,8 +62,10 @@ export function buildDebrief(args: {
   const { judge, moves, newProfile, nextMissionId, messages, events } = args;
 
   const turnText = new Map<string, { who: "you" | "the AI"; text: string }>();
+  // events carry a natural-language `detail` ("Shared … with the AI") — use it as
+  // is; never surface the internal event kind (e.g. attach_resource) to the reader.
   for (const e of events)
-    turnText.set(e.turnId, { who: "you", text: `${e.kind}: ${e.detail}` });
+    turnText.set(e.turnId, { who: "you", text: e.detail });
   for (const m of messages)
     turnText.set(m.turnId, {
       who: m.role === "user" ? "you" : "the AI",

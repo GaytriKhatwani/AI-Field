@@ -44,5 +44,5 @@ export type JudgeOutput = {
 };
 
 /** Versions stamped onto every evaluation so two evaluations are comparable. */
-export const JUDGE_PROMPT_VERSION = "m1-2026-08-25";
+export const JUDGE_PROMPT_VERSION = "practice-language-2026-08-27";
 export const JUDGE_SCHEMA_VERSION = "1";

@@ -69,7 +69,7 @@ export const meetingChaos: Mission = {
     },
   ],
   workbenchSystemContext:
-    "You are assisting an operator who is summarising a messy planning call. Work only from the material the operator gives you. Execute their instructions precisely. Do not coach them, do not volunteer requirements they did not ask for, do not repair vague instructions, and do not invent facts that are not in the material you were given.",
+    "You are assisting a person who is summarising a messy planning call. Work only from the material the person gives you. Execute their instructions precisely. Do not coach them, do not volunteer requirements they did not ask for, do not repair vague instructions, and do not invent facts that are not in the material you were given.",
   deliverable: {
     title: "Meeting summary",
     fields: [
@@ -105,5 +105,5 @@ export const meetingChaos: Mission = {
     synthesis: 1,
   },
   judgeGuidance:
-    "Strong operators give the AI the raw notes, set the output shape explicitly (decisions / owners / due dates / open questions), and refuse to let the AI invent deadlines the notes never stated (e.g. the unassigned support task, the uncommitted copy date). Weak operators paste one vague request, accept the first draft, and let invented owners and dates through.",
+    "Strong people give the AI the raw notes, set the output shape explicitly (decisions / owners / due dates / open questions), and refuse to let the AI invent deadlines the notes never stated (e.g. the unassigned support task, the uncommitted copy date). Weak people paste one vague request, accept the first draft, and let invented owners and dates through.",
 };

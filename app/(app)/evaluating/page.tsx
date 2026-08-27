@@ -10,10 +10,10 @@ import type { CompetencyMove } from "@/lib/progression/update";
 import { track, EVENTS } from "@/lib/analytics/client";
 
 const READING = [
-  "How you directed the AI",
-  "What you gave it to work from",
-  "How far you pushed the first answer",
-  "What you chose to submit",
+  "The materials you chose",
+  "The instructions you gave",
+  "How you checked and improved the work",
+  "Your finished deliverable",
 ];
 
 export default function Evaluating() {
@@ -22,7 +22,7 @@ export default function Evaluating() {
   const [active, setActive] = useState(0);
   const [errored, setErrored] = useState(false);
 
-  // Cycle the reading lines while the examiner works (purely visual).
+  // Cycle the reading lines while the review runs (purely visual).
   useEffect(() => {
     const reduce =
       typeof window !== "undefined" &&
@@ -118,13 +118,13 @@ export default function Evaluating() {
   if (errored) {
     return (
       <main className="mx-auto flex min-h-screen max-w-reading flex-col justify-center px-[clamp(1.25rem,5vw,3.25rem)] py-16">
-        <p role="alert" className="section-label mb-5">The examiner hit a snag</p>
+        <p role="alert" className="section-label mb-5">The review hit a snag</p>
         <h1 className="display max-w-[16ch] text-ink" style={{ fontSize: "clamp(1.9rem,5vw,2.8rem)" }}>
-          Grading didn&rsquo;t finish.
+          Your review didn&rsquo;t finish.
         </h1>
         <p className="mt-6 max-w-[40ch] text-[0.95rem] leading-relaxed text-ink-2">
-          Your session is saved. This is usually a temporary hiccup with the
-          examiner — try again in a moment.
+          Your practice is saved. This is usually a temporary hiccup — try again
+          in a moment.
         </p>
         <div className="mt-8 flex gap-3">
           <button
@@ -137,7 +137,7 @@ export default function Evaluating() {
             }}
             className="btn"
           >
-            Try grading again
+            Try again
           </button>
           <button type="button" onClick={() => router.push("/field")} className="btn--quiet">
             Back to the Field
@@ -149,15 +149,17 @@ export default function Evaluating() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-reading flex-col justify-center px-[clamp(1.25rem,5vw,3.25rem)] py-16">
-      <p role="status" className="section-label mb-5">
-        The examiner is reading your session
-      </p>
+      <p role="status" className="section-label mb-5">Practice review</p>
       <h1
         className="display max-w-[18ch] text-ink"
         style={{ fontSize: "clamp(2rem,5.5vw,3.2rem)" }}
       >
-        Reading how you worked.
+        Preparing your practice review.
       </h1>
+      <p className="mt-6 max-w-[46ch] text-[0.95rem] leading-relaxed text-ink-2">
+        We&rsquo;re looking at the choices you made, how you worked with the AI,
+        and what you produced.
+      </p>
 
       <ul className="mt-12 m-0 max-w-[34rem] list-none space-y-0 p-0">
         {READING.map((line, i) => {
@@ -188,9 +190,9 @@ export default function Evaluating() {
         })}
       </ul>
 
-      <p className="mt-10 max-w-[40ch] text-[0.9rem] leading-relaxed text-ink-3">
-        The same standard for every operator — your session judged on how you
-        directed the work, not on how the AI happened to answer.
+      <p className="mt-10 max-w-[42ch] text-[0.9rem] leading-relaxed text-ink-3">
+        The same standard every time — read on how you worked, not on how the AI
+        happened to answer.
       </p>
     </main>
   );

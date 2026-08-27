@@ -20,7 +20,7 @@ const body = Public_Sans({
 
 export const metadata: Metadata = {
   title: "AI Field",
-  description: "A practice environment for directing AI on real work.",
+  description: "A practice environment for doing real work with AI.",
 };
 
 export default function RootLayout({

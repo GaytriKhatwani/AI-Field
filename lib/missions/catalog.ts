@@ -11,7 +11,7 @@ export const theBadPrompt: Mission = {
   id: "the-bad-prompt",
   title: "The Bad Prompt",
   tagline: "Rewrite a weak prompt into one that actually works.",
-  premise: "A colleague's prompt keeps producing junk. Direct the AI to something usable.",
+  premise: "A colleague's prompt keeps producing junk. Turn it into something usable.",
   domain: "marketing",
   effortMinutes: 10,
   availability: "available",
@@ -19,7 +19,7 @@ export const theBadPrompt: Mission = {
     scenario:
       "Sam from marketing pings you: \"can you take a crack at this? I've been going in circles.\" Attached is the prompt they keep feeding the AI — just \"write a product announcement\" — and a run of drafts that all read like the same press-release filler. What they actually need is the announcement for shared team scheduling, going to existing customers, and it has to sound like us, not a launch-hype generator. Sam's note on how the company writes is in with the materials.",
     objective:
-      "Direct the AI to a product announcement you'd be willing to send: specific to the feature, pitched to existing customers, in a plain confident voice.",
+      "Get the AI to a product announcement you'd be willing to send: specific to the feature, pitched to existing customers, in a plain confident voice.",
     constraints: [
       "The announcement is about one feature: shared team scheduling.",
       "Audience is existing customers, not press or new prospects.",
@@ -45,7 +45,7 @@ announce", "game-changer", "revolutionary". Keep sentences short.`,
     },
   ],
   workbenchSystemContext:
-    "You are helping an operator write a product announcement. Follow their instructions exactly. Do not add requirements they did not state, do not coach them on prompt-writing, and do not invent product details beyond what they give you.",
+    "You are helping a person write a product announcement. Follow their instructions exactly. Do not add requirements they did not state, do not coach them on prompt-writing, and do not invent product details beyond what they give you.",
   deliverable: {
     title: "Announcement",
     fields: [
@@ -55,7 +55,7 @@ announce", "game-changer", "revolutionary". Keep sentences short.`,
   },
   competencyWeights: { context: 0.6, direction: 1, iteration: 1, verification: 0.3, synthesis: 0.7 },
   judgeGuidance:
-    "Strong operators specify feature, audience, and voice, then iterate to strip hype. Weak operators pass the vague prompt through and accept generic filler.",
+    "Strong people specify feature, audience, and voice, then iterate to strip hype. Weak people pass the vague prompt through and accept generic filler.",
 };
 
 export const theBrief: Mission = {
@@ -91,7 +91,7 @@ export const theBrief: Mission = {
     },
   ],
   workbenchSystemContext:
-    "You are helping an operator build a competitive one-pager. Use only the facts they give you. If asked to compare, compare on the axes they name. Do not invent competitor facts, market data, or customers.",
+    "You are helping a person build a competitive one-pager. Use only the facts they give you. If asked to compare, compare on the axes they name. Do not invent competitor facts, market data, or customers.",
   deliverable: {
     title: "Competitive one-pager",
     fields: [
@@ -111,7 +111,7 @@ export const theBrief: Mission = {
   },
   competencyWeights: { context: 1, direction: 1, iteration: 0.5, verification: 0.8, synthesis: 1 },
   judgeGuidance:
-    "Strong operators define the comparison axes and separate fact from assumption. Weak operators let the AI invent competitor detail and present it as fact.",
+    "Strong people define the comparison axes and separate fact from assumption. Weak people let the AI invent competitor detail and present it as fact.",
 };
 
 export const dontTrustTheAI: Mission = {
@@ -155,7 +155,7 @@ Full deck to follow before the board meeting.`,
     },
   ],
   workbenchSystemContext:
-    "You are assisting an operator who is checking a summary. Answer their questions using only the source they provide. Do not add figures or claims that are not in the source, and do not reassure them that something is correct unless the source supports it.",
+    "You are assisting a person who is checking a summary. Answer their questions using only the source they provide. Do not add figures or claims that are not in the source, and do not reassure them that something is correct unless the source supports it.",
   deliverable: {
     title: "Verified summary",
     fields: [
@@ -165,5 +165,5 @@ Full deck to follow before the board meeting.`,
   },
   competencyWeights: { context: 0.5, direction: 0.6, iteration: 0.7, verification: 1, synthesis: 0.7 },
   judgeGuidance:
-    "Strong operators trace each figure to the source and catch the invented enterprise number. Weak operators accept the confident summary whole.",
+    "Strong people trace each figure to the source and catch the invented enterprise number. Weak people accept the confident summary whole.",
 };
