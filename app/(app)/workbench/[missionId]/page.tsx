@@ -82,6 +82,10 @@ export default function Workbench() {
   // Ephemeral, session-only provenance for transferred table rows (SPEC): never
   // persisted, structurally unable to reach the submit payload.
   const sidecarRef = useRef<RowSourceSidecar>({});
+  // Which block produced each transferred entry (entryId → block + section). Lets
+  // removing an entry — by hand or via Undo — free that block's section
+  // membership so it can be transferred again. Session-only, like addedBlocks.
+  const entryOriginRef = useRef<Record<string, { blockId: string; fieldId: string }>>({});
 
   const idRef = useRef(0);
 
@@ -95,9 +99,15 @@ export default function Workbench() {
   const [switchTo, setSwitchTo] = useState<string | null>(null);
 
   // ---- feedback + shallow Undo ----
-  const [undo, setUndo] = useState<{ record: UndoRecord; label: string; count: number } | null>(
-    null,
-  );
+  // blockIds/fieldId let Undo also reverse the addedBlocks membership for the
+  // exact blocks this commit transferred, re-opening them for re-adding.
+  const [undo, setUndo] = useState<{
+    record: UndoRecord;
+    label: string;
+    count: number;
+    blockIds: string[];
+    fieldId: string;
+  } | null>(null);
   const [flashItems, setFlashItems] = useState<Set<string>>(new Set());
   const [flashField, setFlashField] = useState<string | null>(null);
   const [updatedMarker, setUpdatedMarker] = useState(false);
@@ -117,8 +127,13 @@ export default function Workbench() {
 
   const [confirming, setConfirming] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [emptyHint, setEmptyHint] = useState(false);
-  const [saveState, setSaveState] = useState<"idle" | "saved" | "error">("idle");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // Blocks already transferred, per AI reply: blockId → the section ids it landed
+  // in. Powers the "already added" marker in selection mode and the commit-time
+  // dedupe that stops a silent duplicate into the *same* section (a block can
+  // still go to a different one). Session-only, reversed on Undo; never persisted
+  // and structurally unable to reach the deliverable or the submit payload.
+  const [addedBlocks, setAddedBlocks] = useState<Record<string, string[]>>({});
   // one polite live region drives every screen-reader status announcement.
   const [announce, setAnnounce] = useState("");
 
@@ -149,13 +164,12 @@ export default function Workbench() {
   }
 
   // ---- Undo lifecycle ----
-  function clearUndo() {
-    setUndo(null);
-  }
   // Undo expires ~8s after the commit that set it (SPEC user story 14/15). It is
-  // also cleared explicitly on Done, navigation, a new commit, and on editing an
-  // affected item — see those handlers. Checking/scrolling/menu do NOT reset it.
-  // While the Undo control is focused, expiry pauses (timer not scheduled).
+  // replaced by a new commit and cleared on navigation (unmount) and on editing an
+  // affected item — see those handlers. It deliberately SURVIVES ordinary selection
+  // changes, including leaving selection mode with Done, so the 8s window is the
+  // sole gate. While the Undo control is focused, expiry pauses (timer not
+  // scheduled).
   useEffect(() => {
     if (!undo || undoFocused) return;
     const t = setTimeout(() => setUndo(null), UNDO_MS);
@@ -264,7 +278,13 @@ export default function Workbench() {
         draftKey,
         JSON.stringify({ v: DRAFT_VERSION, attemptId, messages, given, deliverable }),
       );
-      setSaveState("saved");
+      // The write already happened; show a brief "Saving…" that settles into
+      // "Saved on this device" beside the deliverable title. While the user keeps
+      // typing, deps change and the timer restarts, so it reads "Saving…" until
+      // ~600ms after the last change.
+      setSaveState("saving");
+      const t = setTimeout(() => setSaveState("saved"), 600);
+      return () => clearTimeout(t);
     } catch {
       setSaveState("error");
     }
@@ -461,7 +481,7 @@ export default function Workbench() {
     setSelecting(null);
     setChecked(new Set());
     setAddOpen(false);
-    clearUndo();
+    // Undo is intentionally NOT cleared here — it survives leaving selection mode.
   }
 
   // Land a batch (or a single synthetic raw-selection block) into one section,
@@ -469,11 +489,52 @@ export default function Workbench() {
   // raw-selection fallback so they can never drift apart.
   function commit(chosen: Block[], field: DeliverableField, opts?: { fromSelection?: boolean }) {
     if (chosen.length === 0) return;
+    // Drop blocks already transferred into THIS section, so a re-add can't create
+    // a silent duplicate. Synthetic raw-selection blocks carry no membership and
+    // always pass; a block can still be added to a *different* section.
+    const fresh = chosen.filter((b) => !(addedBlocks[b.id] ?? []).includes(field.id));
+    if (fresh.length === 0) {
+      setAnnounce(
+        `Already added to ${field.label}${chosen.length > 1 ? " — nothing new to add" : ""}.`,
+      );
+      if (opts?.fromSelection) setAddOpen(false);
+      return;
+    }
     try {
-      const res = commitBlocks(deliverable, sidecarRef.current, chosen, field);
+      const res = commitBlocks(deliverable, sidecarRef.current, fresh, field);
       setDeliverable(res.deliverable);
       sidecarRef.current = res.sidecar;
-      setUndo({ record: undoRecordFor(res), label: field.label, count: res.addedIds.length });
+      // Remember which real blocks landed in this section (raw ids aren't tracked
+      // — they're one-off and could collide).
+      const trackedIds = fresh.map((b) => b.id).filter((id) => !id.startsWith("raw:"));
+      if (trackedIds.length > 0) {
+        setAddedBlocks((prev) => {
+          const next = { ...prev };
+          for (const id of trackedIds) next[id] = [...(next[id] ?? []), field.id];
+          return next;
+        });
+      }
+      // Pair each new entry with its source block so a later removal frees it.
+      // res.addedIds are in the reply's block order — the same order this sort
+      // reproduces — so index k lines up on both sides.
+      const ord = (id: string) => {
+        const n = Number(id.slice(id.indexOf(":") + 1));
+        return Number.isFinite(n) ? n : -1;
+      };
+      const orderedFresh = [...fresh].sort((a, b) => ord(a.id) - ord(b.id));
+      res.addedIds.forEach((entryId, k) => {
+        const b = orderedFresh[k];
+        if (b && !b.id.startsWith("raw:")) {
+          entryOriginRef.current[entryId] = { blockId: b.id, fieldId: field.id };
+        }
+      });
+      setUndo({
+        record: undoRecordFor(res),
+        label: field.label,
+        count: res.addedIds.length,
+        blockIds: trackedIds,
+        fieldId: field.id,
+      });
       setFlashItems(new Set(res.addedIds));
       setFlashField(field.id);
       setAnnounce(`Added ${res.addedIds.length} to ${field.label}.`);
@@ -500,7 +561,43 @@ export default function Workbench() {
     const res = undoCommit(deliverable, sidecarRef.current, undo.record);
     setDeliverable(res.deliverable);
     sidecarRef.current = res.sidecar;
+    // Reverse this commit's section membership so the same blocks can be re-added.
+    if (undo.blockIds.length > 0) {
+      const ids = new Set(undo.blockIds);
+      const fieldId = undo.fieldId;
+      setAddedBlocks((prev) => {
+        const next: Record<string, string[]> = {};
+        for (const [bid, fields] of Object.entries(prev)) {
+          if (ids.has(bid)) {
+            const remaining = fields.filter((f) => f !== fieldId);
+            if (remaining.length > 0) next[bid] = remaining;
+          } else {
+            next[bid] = fields;
+          }
+        }
+        return next;
+      });
+    }
+    for (const id of undo.record.addedIds) delete entryOriginRef.current[id];
     setUndo(null);
+  }
+
+  // Free a removed entry's block, so a block deleted from the deliverable by hand
+  // can be transferred again (otherwise the dedupe would wrongly keep blocking it).
+  function freeBlockFor(entryId: string) {
+    const origin = entryOriginRef.current[entryId];
+    if (!origin) return;
+    delete entryOriginRef.current[entryId];
+    const { blockId, fieldId } = origin;
+    setAddedBlocks((prev) => {
+      const fields = prev[blockId];
+      if (!fields) return prev;
+      const remaining = fields.filter((f) => f !== fieldId);
+      const next = { ...prev };
+      if (remaining.length > 0) next[blockId] = remaining;
+      else delete next[blockId];
+      return next;
+    });
   }
 
   // ---- raw-selection precision fallback ----
@@ -558,6 +655,7 @@ export default function Workbench() {
   }
   function removeListItem(fieldId: string, id: string) {
     delete sidecarRef.current[id];
+    freeBlockFor(id);
     setDeliverable((d) => ({
       ...d,
       lists: { ...d.lists, [fieldId]: d.lists[fieldId].filter((i) => i.id !== id) },
@@ -583,6 +681,7 @@ export default function Workbench() {
   }
   function removeRow(fieldId: string, id: string) {
     delete sidecarRef.current[id];
+    freeBlockFor(id);
     setDeliverable((d) => ({
       ...d,
       tables: { ...d.tables, [fieldId]: d.tables[fieldId].filter((r) => r.id !== id) },
@@ -619,28 +718,27 @@ export default function Workbench() {
             <h1 className="heading m-0 whitespace-nowrap text-[1.05rem] text-ink">
               {mission.title}
             </h1>
+            {/* task description is redundant on a small screen — hide it there */}
             <span
               title={mission.briefing.objective}
-              className="truncate text-[0.8rem] text-ink-2 sm:text-[0.85rem]"
+              className="hidden truncate text-[0.85rem] text-ink-2 sm:block"
             >
               {mission.briefing.objective}
             </span>
           </div>
         </div>
-        <ThemeToggle />
+        {/* theme control relocated off the mobile header to keep it to back/title/Finish */}
+        <span className="hidden sm:inline-flex">
+          <ThemeToggle />
+        </span>
         <button
           type="button"
           onClick={() => {
-            if (!canFinish) {
-              setEmptyHint(true);
-              setAnnounce("Add at least one item to your deliverable before you can finish practice.");
-              return;
-            }
-            setEmptyHint(false);
             setSubmitError(null);
             setConfirming(true);
           }}
-          disabled={submitting || confirming}
+          disabled={submitting || confirming || !canFinish}
+          title={canFinish ? undefined : "Add something to your deliverable before finishing."}
           className="btn flex-none"
           style={{ padding: "0.6em 1.2em", fontSize: "0.9rem" }}
         >
@@ -716,24 +814,16 @@ export default function Workbench() {
         </div>
       )}
 
-      {/* empty-deliverable hint */}
-      {emptyHint && !canFinish && (
+      {/* finish gate — a calm, quiet line while the deliverable has no real
+          content, explaining the disabled Finish. Clears once content exists. */}
+      {!canFinish && !confirming && (
         <div
           role="status"
-          className="flex flex-none items-center gap-3 border-b border-hairline bg-raised px-[clamp(1rem,3vw,1.75rem)] py-2.5 animate-fadeUp"
+          className="flex flex-none items-center border-b border-hairline px-[clamp(1rem,3vw,1.75rem)] py-2"
         >
-          <p className="min-w-0 flex-1 text-[0.85rem] leading-snug text-ink">
-            Add at least one item before you finish. Work with the AI and add
-            useful output to a section — or type into a section directly.
+          <p className="text-[0.82rem] leading-snug text-ink-2">
+            Add something to your deliverable before finishing.
           </p>
-          <button
-            type="button"
-            onClick={() => setEmptyHint(false)}
-            aria-label="Dismiss"
-            className="flex h-6 w-6 flex-none items-center justify-center text-ink-3 transition-colors hover:text-ink"
-          >
-            ×
-          </button>
         </div>
       )}
 
@@ -751,8 +841,8 @@ export default function Workbench() {
         </div>
       )}
 
-      {/* mobile mode switch */}
-      <div className="flex flex-none border-b border-hairline md:hidden">
+      {/* mode switch — tabbed through tablet; two panes appear only at lg (≥1024px) */}
+      <div className="flex flex-none border-b border-hairline lg:hidden">
         {(["deliverable", "instrument"] as const).map((m) => (
           <button
             key={m}
@@ -763,7 +853,7 @@ export default function Workbench() {
             }}
             aria-pressed={mode === m}
             aria-controls={m === "deliverable" ? "deliverable-panel" : "instrument-panel"}
-            className="relative flex-1 py-2.5 text-[0.72rem] font-semibold uppercase tracking-[0.14em] transition-colors aria-[pressed=true]:text-ink text-ink-3"
+            className="relative flex-1 py-2.5 text-[0.75rem] font-semibold uppercase tracking-[0.12em] transition-colors aria-[pressed=true]:text-ink text-ink-2"
             style={{
               boxShadow:
                 mode === m ? "inset 0 -2px 0 var(--accent)" : "inset 0 -2px 0 transparent",
@@ -782,12 +872,12 @@ export default function Workbench() {
       </div>
 
       {/* working regions */}
-      <div className="grid min-h-0 flex-1 grid-rows-1 md:grid-cols-[minmax(0,0.72fr)_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-rows-1 lg:grid-cols-[minmax(0,0.72fr)_minmax(0,1fr)]">
         {/* INSTRUMENT column */}
         <section
           id="instrument-panel"
-          className={`min-h-0 flex-col border-hairline md:flex md:border-r ${
-            mode === "instrument" ? "flex" : "hidden md:flex"
+          className={`min-h-0 flex-col border-hairline lg:flex lg:border-r ${
+            mode === "instrument" ? "flex" : "hidden lg:flex"
           }`}
           aria-label="Materials and the AI"
         >
@@ -969,6 +1059,8 @@ export default function Workbench() {
                               blocks={blocks}
                               checked={checked}
                               onToggle={toggleBlock}
+                              added={addedBlocks}
+                              fields={spec.fields}
                             />
                           ) : (
                             <>
@@ -1065,25 +1157,30 @@ export default function Workbench() {
           )}
 
           {/* sticky selection action bar — flex-none, bound to this column so it
-              stays reachable while a tall reply scrolls above it */}
+              stays reachable while a tall reply scrolls above it. On tablet/mobile
+              the destinations become full-width buttons and the composer collapses
+              so selecting is the clear, single task. */}
           {selecting && (
             <div className="flex-none border-t border-hairline bg-raised px-[clamp(1rem,2.5vw,1.5rem)] py-2.5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="meta text-ink-2" role="status" aria-live="polite">
-                  {checkedCount > 0
-                    ? `${checkedCount} selected`
-                    : "Select the parts you want"}
+                <span
+                  className="text-[0.9rem] font-semibold text-ink"
+                  role="status"
+                  aria-live="polite"
+                >
+                  {checkedCount > 0 ? `${checkedCount} selected` : "Select the parts you want"}
                 </span>
                 <button
                   type="button"
                   onClick={checkedCount === blocks.length ? clearChecked : selectAll}
                   className="btn--ghost"
-                  style={{ padding: "0.4em 0.75em", fontSize: "0.8rem", minHeight: "40px" }}
+                  style={{ padding: "0.4em 0.75em", fontSize: "0.82rem", minHeight: "40px" }}
                 >
                   {checkedCount === blocks.length && blocks.length > 0 ? "Clear" : "Select all"}
                 </button>
 
-                <div className="relative">
+                {/* desktop: a compact destination menu */}
+                <div className="relative hidden lg:block">
                   <button
                     type="button"
                     onClick={() => setAddOpen((v) => !v)}
@@ -1096,14 +1193,12 @@ export default function Workbench() {
                         : "Add selected blocks to a deliverable section"
                     }
                     className="btn"
-                    style={{ padding: "0.4em 0.85em", fontSize: "0.8rem", minHeight: "40px" }}
+                    style={{ padding: "0.4em 0.85em", fontSize: "0.82rem", minHeight: "40px" }}
                   >
                     Add to…
                   </button>
                   {addOpen && checkedCount > 0 && (
-                    <div
-                      className="absolute bottom-full left-0 z-10 mb-1 min-w-[12rem] rounded-sm border border-hairline bg-raised p-1 shadow-layer"
-                    >
+                    <div className="absolute bottom-full left-0 z-10 mb-1 min-w-[12rem] rounded-sm border border-hairline bg-raised p-1 shadow-layer">
                       {spec.fields.map((f) => (
                         <button
                           key={f.id}
@@ -1121,17 +1216,38 @@ export default function Workbench() {
                 <button
                   type="button"
                   onClick={doneSelecting}
-                  className="btn--quiet ml-auto"
+                  className="btn--quiet ml-auto text-[0.82rem]"
                   style={{ minHeight: "40px" }}
                 >
-                  Done
+                  Done selecting
                 </button>
+              </div>
+
+              {/* tablet/mobile: prominent full-width destination controls */}
+              <div className="mt-2.5 grid grid-cols-1 gap-1.5 lg:hidden">
+                {spec.fields.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => commitCheckedTo(f)}
+                    disabled={checkedCount === 0}
+                    className="btn w-full justify-center"
+                    style={{ padding: "0.7em 1em", fontSize: "0.85rem" }}
+                  >
+                    {checkedCount > 0 ? `Add ${checkedCount} to ${f.label}` : `Add to ${f.label}`}
+                  </button>
+                ))}
               </div>
             </div>
           )}
 
-          {/* composer */}
-          <div className="flex-none border-t border-hairline bg-ground px-[clamp(1rem,2.5vw,1.5rem)] py-3">
+          {/* composer — collapses on tablet/mobile while selecting, so selection
+              mode is the single clear task; always present on the two-pane desktop */}
+          <div
+            className={`flex-none border-t border-hairline bg-ground px-[clamp(1rem,2.5vw,1.5rem)] py-3 ${
+              selecting ? "hidden lg:block" : ""
+            }`}
+          >
             <div className="flex items-end gap-2 rounded-sm border border-hairline bg-raised p-2 focus-within:border-accent">
               <textarea
                 id="composer"
@@ -1175,8 +1291,8 @@ export default function Workbench() {
         {/* DELIVERABLE column */}
         <section
           id="deliverable-panel"
-          className={`min-h-0 flex-col overflow-y-auto bg-ground px-[clamp(1rem,3vw,2.25rem)] py-6 md:flex ${
-            mode === "deliverable" ? "flex" : "hidden md:flex"
+          className={`min-h-0 flex-col overflow-y-auto bg-ground px-[clamp(1rem,3vw,2.25rem)] py-6 lg:flex ${
+            mode === "deliverable" ? "flex" : "hidden lg:flex"
           }`}
           aria-label="Your deliverable"
         >
@@ -1185,9 +1301,13 @@ export default function Workbench() {
               <p className="section-label mb-1">You&rsquo;re building</p>
               <h2 className="heading text-[1.4rem] text-ink">{spec.title}</h2>
             </div>
-            {saveState === "saved" && (
-              <span className="meta flex-none text-ink-3" title="Saved on this device only">
-                Saved on this device
+            {(saveState === "saving" || saveState === "saved") && (
+              <span
+                className="flex-none text-[0.78rem] font-medium text-ink-2"
+                title="Saved on this device only"
+                aria-live="polite"
+              >
+                {saveState === "saving" ? "Saving…" : "Saved on this device"}
               </span>
             )}
           </div>
@@ -1277,17 +1397,24 @@ export default function Workbench() {
 
 // Renders a completed AI reply as its mechanical blocks, each with a persistent
 // checkbox. Consecutive blocks under the same heading are grouped under a shown
-// (non-selectable) context label. Large tap targets; native checkboxes keep it
-// keyboard- and screen-reader-friendly.
+// (non-selectable) context label. Blocks already transferred carry an "Added to
+// …" marker so a re-add into the same section (a silent duplicate) is visible up
+// front. Large tap targets; native checkboxes keep it keyboard- and
+// screen-reader-friendly.
 function SelectionView({
   blocks,
   checked,
   onToggle,
+  added,
+  fields,
 }: {
   blocks: Block[];
   checked: Set<string>;
   onToggle: (id: string) => void;
+  added: Record<string, string[]>;
+  fields: DeliverableField[];
 }) {
+  const labelOf = (id: string) => fields.find((f) => f.id === id)?.label ?? id;
   return (
     // Named group so a screen-reader user knows they've entered block selection.
     <div
@@ -1302,6 +1429,7 @@ function SelectionView({
         // description (via aria-describedby) so it is read once, not twice, and a
         // long paragraph never becomes the control's name.
         const textId = `blk-${b.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+        const addedTo = added[b.id] ?? [];
         return (
           <div key={b.id}>
             {showLabel && (
@@ -1318,11 +1446,22 @@ function SelectionView({
                 aria-describedby={textId}
                 className="mt-0.5 h-[18px] w-[18px] flex-none accent-[var(--accent)]"
               />
-              <span
-                id={textId}
-                className="min-w-0 flex-1 whitespace-pre-wrap text-[0.9rem] leading-relaxed text-ink"
-              >
-                {b.text}
+              <span className="min-w-0 flex-1">
+                <span
+                  id={textId}
+                  className="block whitespace-pre-wrap text-[0.9rem] leading-relaxed text-ink"
+                >
+                  {b.text}
+                </span>
+                {addedTo.length > 0 && (
+                  <span
+                    className="mt-1 inline-flex items-center gap-[0.5ch] text-[0.72rem] font-semibold"
+                    style={{ color: "var(--good)" }}
+                  >
+                    <Check width={11} height={9} />
+                    Added to {addedTo.map(labelOf).join(", ")}
+                  </span>
+                )}
               </span>
             </label>
           </div>
@@ -1405,7 +1544,7 @@ function ListEditor({
               placeholder={placeholder}
               aria-label={`${label} — item ${i + 1}`}
               data-gramm="false"
-              className="min-h-0 flex-1 border-b border-hairline bg-transparent py-1.5 text-[0.95rem] leading-relaxed text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-accent"
+              className="min-h-0 flex-1 border-b border-hairline bg-transparent py-1.5 text-[0.95rem] leading-relaxed text-ink outline-none transition-colors placeholder:text-ink-3 hover:border-ink-3 focus:border-accent"
             />
             <button
               type="button"
@@ -1510,7 +1649,7 @@ function TableEditor({
                           placeholder={c.placeholder}
                           aria-label={`${c.label}, row ${i + 1}`}
                           data-gramm="false"
-                          className={`min-h-0 w-full bg-transparent py-1 text-[0.92rem] leading-snug text-ink outline-none placeholder:text-ink-3 ${
+                          className={`min-h-0 w-full border-b border-transparent bg-transparent py-1 text-[0.92rem] leading-snug text-ink outline-none transition-colors placeholder:text-ink-3 hover:border-hairline focus:border-accent ${
                             ci === 0 ? "font-semibold" : ""
                           }`}
                           style={{ minWidth: ci === 0 ? "5rem" : "7rem" }}

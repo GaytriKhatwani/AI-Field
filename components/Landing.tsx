@@ -65,7 +65,7 @@ export function Landing() {
   );
 
   return (
-    <main className="pb-24">
+    <main className="pb-16">
       {/* HERO — a wide, asymmetric band: value on the left, a cropped fragment of
           the real product (assignment → AI work → the read) on the right. The
           band clips its own bleed so the page never scrolls sideways. */}
@@ -118,40 +118,57 @@ export function Landing() {
         </div>
       </section>
 
-      {/* Below the hero the page returns to an editorial reading width. */}
-      <div className="mx-auto max-w-reading px-[clamp(1.25rem,5vw,3.25rem)]">
-        {/* HOW IT WORKS — the differentiator hook, proved by the five-step loop,
-            then one payoff beat. The hero already carries the review card, so the
-            page never re-shows it here. */}
-        <section aria-label="How it works" className="pt-[clamp(3rem,7vw,5rem)]">
-          <h2
-            className="heading max-w-measure text-ink"
-            style={{ fontSize: "clamp(1.5rem,3.6vw,2.05rem)", lineHeight: 1.12 }}
-          >
-            Good AI work is more than writing a prompt.
-          </h2>
-          <p className="mt-4 max-w-measure text-[1.05rem] leading-relaxed text-ink-2">
-            Practise a realistic work situation from start to finish, not just the
-            prompt.
-          </p>
-
+      {/* Below the hero: one compact section — the value on the left, the five-step
+          practice sequence on the right — then a single CTA row under a hairline.
+          Deliberately dense (spacing well below the hero's) so the whole page reads
+          in ~1.5 screens. No cards, icons, or a second review example. */}
+      <div className="mx-auto max-w-reading px-[clamp(1.25rem,5vw,3.25rem)] pt-[clamp(1.75rem,4vw,2.75rem)]">
+        <section
+          aria-label="How it works"
+          className="grid gap-x-[clamp(2rem,6vw,4.5rem)] gap-y-[clamp(1.5rem,4vw,2.25rem)] md:grid-cols-2 md:items-center"
+        >
+          <div className="max-w-[26ch]">
+            <h2
+              className="heading text-ink"
+              style={{ fontSize: "clamp(1.5rem,3.6vw,2.05rem)", lineHeight: 1.12 }}
+            >
+              Good AI work is more than writing a prompt.
+            </h2>
+            <p className="mt-4 text-[1.02rem] leading-relaxed text-ink-2">
+              Practise a realistic work situation from start to finish, not just the
+              prompt.
+            </p>
+          </div>
           <StepFlow />
-
-          <hr className="rule my-[clamp(2rem,5vw,3rem)]" />
-
-          <p className="max-w-measure text-[1.05rem] font-medium leading-snug text-ink">
-            See what you handled well&mdash;and what to practise next.
-          </p>
         </section>
 
-        <hr className="rule my-[clamp(2.75rem,7vw,4.5rem)]" />
+        <hr className="rule my-[clamp(1.75rem,4.5vw,2.75rem)]" />
 
-        {/* CLOSING — a real, anchored close */}
-        <section aria-label="Start" className="max-w-measure">
-          <h2 className="display text-ink" style={{ fontSize: "clamp(1.9rem,5.5vw,3rem)" }}>
+        {/* one horizontal CTA row: the close on the left, the action on the right */}
+        <section
+          aria-label="Start"
+          className="flex flex-col gap-x-[clamp(2rem,6vw,4rem)] gap-y-6 md:flex-row md:items-center md:justify-between"
+        >
+          <h2
+            className="display max-w-[15ch] text-ink"
+            style={{ fontSize: "clamp(1.7rem,4.5vw,2.5rem)", lineHeight: 1.04 }}
+          >
             See how you actually work with AI.
           </h2>
-          {cta}
+          <div className="flex-none">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+              <button type="button" onClick={start} disabled={starting} className="btn">
+                {starting ? "Starting…" : "Try your first scenario"}
+                {!starting && <Arrow className="arr" />}
+              </button>
+              <span className="meta">No signup · about 10 minutes</span>
+            </div>
+            {error && (
+              <p role="alert" className="mt-3 max-w-measure text-[0.9rem] text-warn">
+                Couldn&rsquo;t start just now — check your connection and try again.
+              </p>
+            )}
+          </div>
         </section>
       </div>
     </main>
@@ -256,11 +273,10 @@ present: Priya (PM), Marcus (eng), Dana (design), Sam (marketing), + Leo joined 
   );
 }
 
-// The five-step loop as a compact visual sequence — the proof under the "more
+// The five-step loop as a compact vertical sequence — the proof beside the "more
 // than a prompt" hook. A semantic <ol> (a screen reader reads it as an ordered
-// list); the arrows between steps are decorative. Desktop lays the steps in a
-// wrapping row joined by → glyphs; narrow screens stack them vertically along a
-// single connecting hairline so the sequence never crushes horizontally.
+// list) drawn as a connected rail of nodes, the same timeline idiom the debrief
+// uses. It reads the same in the hero's right column and stacked on mobile.
 const STEPS = [
   "Get a brief",
   "Choose materials",
@@ -271,30 +287,17 @@ const STEPS = [
 
 function StepFlow() {
   return (
-    <ol
-      aria-label="How a scenario works, step by step"
-      className="mt-7 m-0 flex max-w-reading list-none flex-col gap-0 p-0 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-1 sm:gap-y-3"
-    >
+    <ol aria-label="How a scenario works, step by step" className="relative m-0 list-none p-0">
       {STEPS.map((step, i) => (
-        <li
-          key={step}
-          className="flex items-center gap-3 border-l border-hairline pb-4 pl-4 last:pb-0 sm:border-l-0 sm:gap-0 sm:pb-0 sm:pl-0"
-        >
-          {/* mobile: a node on the connecting rail. desktop: the arrow before
-              every step but the first carries the flow instead. */}
+        <li key={step} className="relative flex items-baseline gap-3.5 pb-3.5 last:pb-0">
+          {i < STEPS.length - 1 && (
+            <span aria-hidden className="absolute left-[3px] top-[0.9em] h-full w-px bg-hairline" />
+          )}
           <span
             aria-hidden
-            className="-ml-[calc(1rem+3px)] h-[6px] w-[6px] flex-none rounded-full bg-ink-3 sm:hidden"
+            className="relative z-10 mt-[0.45em] h-[7px] w-[7px] flex-none rounded-full bg-ink-3"
           />
-          {i > 0 && (
-            <span
-              aria-hidden
-              className="hidden px-2 text-ink-3 sm:inline"
-            >
-              →
-            </span>
-          )}
-          <span className="text-[0.95rem] font-medium text-ink">{step}</span>
+          <span className="text-[0.98rem] font-medium leading-snug text-ink">{step}</span>
         </li>
       ))}
     </ol>
