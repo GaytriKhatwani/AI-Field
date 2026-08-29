@@ -741,8 +741,8 @@ export default function Workbench() {
       {saveState === "error" && (
         <div
           role="alert"
-          className="flex flex-none items-center gap-3 border-b border-hairline px-[clamp(1rem,3vw,1.75rem)] py-2"
-          style={{ background: "color-mix(in oklab, var(--warn) 12%, var(--ground))" }}
+          className="flex flex-none items-center gap-3 border-b border-l-2 border-hairline bg-raised px-[clamp(1rem,3vw,1.75rem)] py-2"
+          style={{ borderLeftColor: "var(--warn)" }}
         >
           <p className="min-w-0 flex-1 text-[0.82rem] leading-snug" style={{ color: "var(--warn)" }}>
             This device couldn&rsquo;t save your latest changes. Keep this tab open
@@ -1088,7 +1088,7 @@ export default function Workbench() {
                     type="button"
                     onClick={() => setAddOpen((v) => !v)}
                     disabled={checkedCount === 0}
-                    aria-haspopup="menu"
+                    aria-haspopup="true"
                     aria-expanded={addOpen}
                     aria-label={
                       checkedCount > 0
@@ -1102,14 +1102,12 @@ export default function Workbench() {
                   </button>
                   {addOpen && checkedCount > 0 && (
                     <div
-                      role="menu"
                       className="absolute bottom-full left-0 z-10 mb-1 min-w-[12rem] rounded-sm border border-hairline bg-raised p-1 shadow-layer"
                     >
                       {spec.fields.map((f) => (
                         <button
                           key={f.id}
                           type="button"
-                          role="menuitem"
                           onClick={() => commitCheckedTo(f)}
                           className="block w-full rounded-sm px-2.5 py-2 text-left text-[0.85rem] font-medium text-ink transition-colors hover:bg-accent hover:text-on-accent"
                         >

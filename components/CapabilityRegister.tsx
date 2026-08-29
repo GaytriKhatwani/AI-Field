@@ -96,7 +96,7 @@ export function CapabilityRegister({
               <button
                 type="button"
                 aria-expanded={isOpen}
-                aria-controls="cap-evidence"
+                aria-controls={isOpen ? "cap-evidence" : undefined}
                 onClick={() => setOpen(isOpen ? null : comp)}
                 className="w-full text-left bg-ground px-[1.05rem] pb-[1.15rem] pt-[1.1rem] transition-colors duration-150 hover:bg-raised aria-[expanded=true]:bg-raised flex flex-col gap-[0.55rem] cap-btn"
               >

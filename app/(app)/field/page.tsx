@@ -243,7 +243,7 @@ export default function Field() {
                     >
                       <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-[1.1rem] gap-y-1">
                         <span
-                          className={`heading whitespace-nowrap text-[1.2rem] transition-colors group-hover:text-accent ${
+                          className={`heading text-[1.2rem] transition-colors group-hover:text-accent ${
                             later ? "text-ink-2" : "text-ink"
                           }`}
                         >

@@ -250,4 +250,9 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+  /* breathe rests at 0.25 opacity, so a frozen pulse leaves loaders faint —
+     hold these at full opacity when motion is reduced. */
+  .animate-breathe {
+    opacity: 1 !important;
+  }
 }

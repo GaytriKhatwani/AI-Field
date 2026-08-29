@@ -163,7 +163,7 @@ export default function Onboarding() {
           )}
 
           <ul
-            role="radiogroup"
+            role="group"
             aria-label={step.prompt}
             className="mt-9 max-w-[34rem] list-none p-0"
           >
@@ -173,9 +173,8 @@ export default function Onboarding() {
                 <li key={opt} className="border-t border-hairline last:border-b">
                   <button
                     type="button"
-                    role="radio"
                     onClick={() => choose(opt)}
-                    aria-checked={active}
+                    aria-pressed={active}
                     className="group flex w-full items-center gap-4 py-[0.95rem] text-left transition-transform duration-200 ease hover:translate-x-1.5"
                   >
                     <span
