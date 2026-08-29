@@ -7,40 +7,45 @@ import type { DeliverableField } from "@/lib/missions/types";
 import { track, EVENTS } from "@/lib/analytics/client";
 import { Arrow, Back, Check } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { segment, type Block } from "@/lib/workbench/segment";
+import {
+  emptyDeliverable,
+  migrateDeliverable,
+  toSubmitPayload,
+  hasMeaningfulContent,
+  newListItem,
+  newTableRow,
+  commitBlocks,
+  undoCommit,
+  undoRecordFor,
+  DRAFT_VERSION,
+  type EditableDeliverable,
+  type EditableListItem,
+  type EditableTableRow,
+  type RowSourceSidecar,
+  type UndoRecord,
+} from "@/lib/workbench/transfer";
 
 const HARD_CEILING = 12;
+const UNDO_MS = 8000;
+const FLASH_MS = 2200;
 
 type Msg = { id: string; role: "user" | "ai"; text: string; error?: boolean };
-type Row = Record<string, string>;
-type Deliverable = {
-  lists: Record<string, string[]>;
-  tables: Record<string, Row[]>;
-};
 
-function emptyDeliverable(fields: DeliverableField[]): Deliverable {
-  const lists: Record<string, string[]> = {};
-  const tables: Record<string, Row[]> = {};
-  for (const f of fields) {
-    if (f.kind === "list") lists[f.id] = [];
-    else tables[f.id] = [];
-  }
-  return { lists, tables };
+// Config-derived creation label: "Add a decision" / "Add an action item",
+// singularised from the field label so no mission-specific string lives here.
+function singularise(label: string): string {
+  const l = label.trim();
+  if (/ies$/i.test(l)) return l.replace(/ies$/i, "y");
+  if (/ss$/i.test(l)) return l; // "progress" — not a plural
+  if (/s$/i.test(l)) return l.replace(/s$/i, "");
+  return l;
 }
-
-// Strip a leading list marker ("1.", "2)", "-", "•", "*") the AI often prefixes
-// its lines with, so a captured phrase lands clean in the deliverable.
-function stripListMarker(text: string): string {
-  return text.replace(/^\s*(?:\d+[.)]|[-–—•*])\s+/, "").trim();
-}
-
-// A captured phrase is a single blob, but a table row has several columns. Land
-// it in the column that reads as the row's content (task / description / …)
-// rather than blindly in the first column (often an Owner/Who key), leaving the
-// structured cells for the operator to fill.
-function tableTargetColumn(columns: { id: string; label: string }[]): string {
-  const CONTENT = /task|desc|detail|item|note|summary|answer|content|what|text|question/i;
-  const match = columns.find((c) => CONTENT.test(c.id) || CONTENT.test(c.label));
-  return (match ?? columns[0]).id;
+function createLabel(field: DeliverableField): string {
+  const s = singularise(field.label);
+  if (!s) return field.kind === "table" ? "Add a row" : "Add an item";
+  const article = /^[aeiou]/i.test(s) ? "an" : "a";
+  return `Add ${article} ${s.toLowerCase()}`;
 }
 
 function errorText(code: string | undefined): string {
@@ -69,37 +74,63 @@ export default function Workbench() {
   const [thinking, setThinking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   // Mobile lands on the instrument: you direct the AI before there's anything
-  // to curate, and the deliverable starts empty. A capture switches to it.
+  // to curate, and the deliverable starts empty.
   const [mode, setMode] = useState<"instrument" | "deliverable">("instrument");
-  const [deliverable, setDeliverable] = useState<Deliverable>(() =>
+  const [deliverable, setDeliverable] = useState<EditableDeliverable>(() =>
     mission ? emptyDeliverable(mission.deliverable.fields) : { lists: {}, tables: {} },
   );
+  // Ephemeral, session-only provenance for transferred table rows (SPEC): never
+  // persisted, structurally unable to reach the submit payload.
+  const sidecarRef = useRef<RowSourceSidecar>({});
+
   const idRef = useRef(0);
+
+  // ---- block-level selection ----
+  // One AI reply is in selection mode at a time; `checked` holds the chosen
+  // block ids within it. The sticky action bar commits a batch to one section
+  // and the user keeps selecting without leaving the mode.
+  const [selecting, setSelecting] = useState<string | null>(null);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [addOpen, setAddOpen] = useState(false);
+  const [switchTo, setSwitchTo] = useState<string | null>(null);
+
+  // ---- feedback + shallow Undo ----
+  const [undo, setUndo] = useState<{ record: UndoRecord; label: string; count: number } | null>(
+    null,
+  );
+  const [flashItems, setFlashItems] = useState<Set<string>>(new Set());
+  const [flashField, setFlashField] = useState<string | null>(null);
+  const [updatedMarker, setUpdatedMarker] = useState(false);
+  // While the Undo control is focused, its expiry pauses so a keyboard user
+  // can reach it without it vanishing (SPEC §7.1).
+  const [undoFocused, setUndoFocused] = useState(false);
+  // On leaving selection mode, return focus to the reply's action (SPEC §7.1).
+  const [refocusMsgId, setRefocusMsgId] = useState<string | null>(null);
+
+  // ---- raw-selection precision fallback ----
   const [capture, setCapture] = useState<{ text: string; x: number; y: number } | null>(null);
-  const [flash, setFlash] = useState<string | null>(null);
+
+  // ---- left-column collapse ----
+  const [collapseMatters, setCollapseMatters] = useState(false);
+  const [collapseMaterials, setCollapseMaterials] = useState(false);
+  const collapsedOnce = useRef(false);
+
   const [confirming, setConfirming] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  // one polite live region drives every screen-reader status announcement
-  // (capture landed, submit failed) so dynamic changes aren't silent.
+  const [emptyHint, setEmptyHint] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saved" | "error">("idle");
+  // one polite live region drives every screen-reader status announcement.
   const [announce, setAnnounce] = useState("");
+
   const transcriptRef = useRef<HTMLOListElement>(null);
   const captureRef = useRef<HTMLDivElement>(null);
   const fieldRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  // keyboard-reachable capture: which AI message has its "add to a section"
-  // picker open (the select-to-capture toolbar is pointer-only, so every reply
-  // also carries a focusable path into the deliverable).
-  const [pickerFor, setPickerFor] = useState<string | null>(null);
-  const [emptyHint, setEmptyHint] = useState(false);
-  // First-visit-only orientation cue (not a multi-step tour). Dismissed for good
-  // once seen, per-device.
+
+  // First-visit-only orientation cue.
   const [showGuide, setShowGuide] = useState(false);
-  // draft persistence: the workbench is the longest-dwell surface, so the
-  // transcript + given resources + half-built deliverable survive a refresh or
-  // an accidental navigation instead of being lost with the React state.
   const [restored, setRestored] = useState(false);
   const draftKey = `aifield:wb:${params.missionId}`;
 
-  // first Workbench visit: show the orientation cue once
   useEffect(() => {
     try {
       if (localStorage.getItem("aifield.wbGuideSeen") !== "1") setShowGuide(true);
@@ -117,17 +148,63 @@ export default function Workbench() {
     setShowGuide(false);
   }
 
-  // clear the landing flash after it plays
+  // ---- Undo lifecycle ----
+  function clearUndo() {
+    setUndo(null);
+  }
+  // Undo expires ~8s after the commit that set it (SPEC user story 14/15). It is
+  // also cleared explicitly on Done, navigation, a new commit, and on editing an
+  // affected item — see those handlers. Checking/scrolling/menu do NOT reset it.
+  // While the Undo control is focused, expiry pauses (timer not scheduled).
   useEffect(() => {
-    if (!flash) return;
-    const t = setTimeout(() => setFlash(null), 1100);
+    if (!undo || undoFocused) return;
+    const t = setTimeout(() => setUndo(null), UNDO_MS);
     return () => clearTimeout(t);
-  }, [flash]);
+  }, [undo, undoFocused]);
 
-  // the capture toolbar is anchored to viewport coords — dismiss it if the
-  // layout shifts under it, or on Escape (returning focus to the transcript so
-  // a keyboard user isn't stranded). When it opens, move focus into it so the
-  // capture action is reachable without a mouse.
+  // Escape exits selection mode (SPEC §7.1). Bound only while a reply is in
+  // selection mode; focus return is handled by the refocus effect below. Guarded
+  // so it never fires while the switch-response prompt or a menu is the concern.
+  useEffect(() => {
+    if (!selecting) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (addOpen) {
+          setAddOpen(false);
+          return;
+        }
+        doneSelecting();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selecting, addOpen]);
+
+  // After leaving selection mode, move focus back to that reply's "Use in
+  // deliverable" action, so a keyboard user lands where they were (SPEC §7.1).
+  useEffect(() => {
+    if (selecting || !refocusMsgId) return;
+    const btn = document.querySelector<HTMLButtonElement>(
+      `[data-use-btn="${refocusMsgId}"]`,
+    );
+    btn?.focus();
+    setRefocusMsgId(null);
+  }, [selecting, refocusMsgId]);
+
+  // clear the new-item emphasis after it plays (works under reduced motion too,
+  // since it's a state change, not a CSS animation).
+  useEffect(() => {
+    if (flashItems.size === 0 && flashField === null) return;
+    const t = setTimeout(() => {
+      setFlashItems(new Set());
+      setFlashField(null);
+    }, FLASH_MS);
+    return () => clearTimeout(t);
+  }, [flashItems, flashField]);
+
+  // the raw-selection toolbar is anchored to viewport coords — dismiss on layout
+  // shift or Escape; move focus into it on open so it's keyboard-reachable.
   useEffect(() => {
     if (!capture) return;
     captureRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
@@ -146,22 +223,28 @@ export default function Workbench() {
     };
   }, [capture]);
 
-  // rehydrate a saved draft once on mount, before the persist effect can run —
-  // so a refresh mid-attempt restores work rather than clobbering it with empty
-  // state. idRef is advanced past the restored ids so new turns don't collide.
+  // rehydrate a saved draft once on mount. Accepts both the legacy v1 envelope
+  // (bare deliverable) and the current v2 (editable, with ids); migrateDeliverable
+  // assigns ids to a v1 draft losslessly and preserves them for v2.
   useEffect(() => {
+    if (!mission) {
+      setRestored(true);
+      return;
+    }
     try {
       const raw = localStorage.getItem(draftKey);
       if (raw) {
         const d = JSON.parse(raw);
-        if (d && d.v === 1) {
+        if (d && (d.v === 1 || d.v === DRAFT_VERSION)) {
           if (typeof d.attemptId === "string") setAttemptId(d.attemptId);
           if (Array.isArray(d.messages)) {
             setMessages(d.messages);
             idRef.current = d.messages.length;
           }
           if (Array.isArray(d.given)) setGiven(d.given);
-          if (d.deliverable?.lists && d.deliverable?.tables) setDeliverable(d.deliverable);
+          if (d.deliverable) {
+            setDeliverable(migrateDeliverable(d.deliverable, mission.deliverable.fields));
+          }
         }
       }
     } catch {
@@ -171,22 +254,42 @@ export default function Workbench() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey]);
 
-  // persist the draft once restore has run and the AI isn't mid-stream (so a
-  // partial reply and per-token thrash never hit storage). Cleared on submit.
+  // persist once restore has run and the AI isn't mid-stream. Honest device-local
+  // save: on success flag "saved"; on failure flag "error" so the UI can warn.
+  // The ephemeral sidecar is deliberately not persisted.
   useEffect(() => {
     if (!restored || thinking || submitting) return;
     try {
       localStorage.setItem(
         draftKey,
-        JSON.stringify({ v: 1, attemptId, messages, given, deliverable }),
+        JSON.stringify({ v: DRAFT_VERSION, attemptId, messages, given, deliverable }),
       );
+      setSaveState("saved");
     } catch {
-      /* storage unavailable — the attempt still works, just isn't recoverable */
+      setSaveState("error");
     }
   }, [restored, thinking, submitting, attemptId, messages, given, deliverable, draftKey]);
 
+  // Auto-collapse "What matters" and "Materials" once, after the conversation
+  // starts, so the transcript becomes the primary surface. Manual toggles after.
+  useEffect(() => {
+    if (collapsedOnce.current) return;
+    if (messages.length > 0) {
+      collapsedOnce.current = true;
+      setCollapseMatters(true);
+      setCollapseMaterials(true);
+    }
+  }, [messages.length]);
+
   const userTurns = messages.filter((m) => m.role === "user").length;
   const atCeiling = userTurns >= HARD_CEILING;
+
+  // The blocks of the reply currently in selection mode (mechanical split).
+  const selectingText = selecting ? messages.find((m) => m.id === selecting)?.text ?? "" : "";
+  const blocks = useMemo<Block[]>(
+    () => (selecting ? segment(selecting, selectingText) : []),
+    [selecting, selectingText],
+  );
 
   if (!mission) {
     return (
@@ -200,14 +303,10 @@ export default function Workbench() {
   }
 
   const spec = mission.deliverable;
-  const deliverableEmpty =
-    Object.values(deliverable.lists).every((v) => v.length === 0) &&
-    Object.values(deliverable.tables).every((v) => v.length === 0);
+  const canFinish = hasMeaningfulContent(deliverable);
 
   function giveResource(id: string) {
-    if (given.includes(id)) return; // already given — don't re-track or re-add
-    // Resource Attached: attempt_id omitted entirely when no attempt exists yet
-    // (materials can be given before the first message creates the attempt).
+    if (given.includes(id)) return;
     track(EVENTS.RESOURCE_ATTACHED, {
       mission_id: mission!.id,
       mission_version: missionVersion(mission!),
@@ -216,10 +315,6 @@ export default function Workbench() {
     });
     setGiven((g) => (g.includes(id) ? g : [...g, id]));
   }
-
-  // Deciding what to give the AI is the scored Context skill, so the give is not
-  // a one-way door — an operator can take a resource back while they figure out
-  // what the AI actually needs.
   function ungiveResource(id: string) {
     setGiven((g) => g.filter((x) => x !== id));
   }
@@ -256,9 +351,6 @@ export default function Workbench() {
         return;
       }
 
-      // Workbench Message Sent — only after the route accepted the turn. The
-      // attempt exists now (created lazily server-side; id comes back on the
-      // header for the first message). turn_index is this user turn's number.
       const aid = attemptId ?? hdr;
       if (aid) {
         track(EVENTS.WORKBENCH_MESSAGE_SENT, {
@@ -295,7 +387,12 @@ export default function Workbench() {
       const res = await fetch("/api/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ attemptId, missionId: mission!.id, deliverable }),
+        // exact existing API shape — ids/sidecar stripped, empties filtered.
+        body: JSON.stringify({
+          attemptId,
+          missionId: mission!.id,
+          deliverable: toSubmitPayload(deliverable),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       const id = res.ok ? (data.attemptId ?? attemptId) : null;
@@ -307,15 +404,11 @@ export default function Workbench() {
         setSubmitting(false);
         return;
       }
-      // Deliverable Submitted — only after /api/submit succeeded (the commitment
-      // point), carrying the now-canonical attempt id.
       track(EVENTS.DELIVERABLE_SUBMITTED, {
         mission_id: mission!.id,
         mission_version: missionVersion(mission!),
         attempt_id: id,
       });
-      // handed in — the draft is now the server's; drop the local copy so a
-      // later visit doesn't rehydrate a submitted, uneditable attempt.
       try {
         localStorage.removeItem(draftKey);
       } catch {
@@ -331,7 +424,86 @@ export default function Workbench() {
     }
   }
 
-  // ---- select-to-capture: pull the AI's words into the deliverable ----
+  // ---- selection mode ----
+  function useInDeliverable(messageId: string) {
+    if (selecting && selecting !== messageId && checked.size > 0) {
+      setSwitchTo(messageId); // ask before dropping an uncommitted selection
+      return;
+    }
+    setSelecting(messageId);
+    setChecked(new Set());
+    setAddOpen(false);
+  }
+  function confirmSwitch(discard: boolean) {
+    if (discard && switchTo) {
+      setSelecting(switchTo);
+      setChecked(new Set());
+      setAddOpen(false);
+    }
+    setSwitchTo(null);
+  }
+  function toggleBlock(id: string) {
+    setChecked((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
+  function selectAll() {
+    setChecked(new Set(blocks.map((b) => b.id)));
+  }
+  function clearChecked() {
+    setChecked(new Set());
+  }
+  function doneSelecting() {
+    if (selecting) setRefocusMsgId(selecting); // return focus to the reply's action
+    setSelecting(null);
+    setChecked(new Set());
+    setAddOpen(false);
+    clearUndo();
+  }
+
+  // Land a batch (or a single synthetic raw-selection block) into one section,
+  // atomically, and set up feedback + Undo. Shared by block selection and the
+  // raw-selection fallback so they can never drift apart.
+  function commit(chosen: Block[], field: DeliverableField, opts?: { fromSelection?: boolean }) {
+    if (chosen.length === 0) return;
+    try {
+      const res = commitBlocks(deliverable, sidecarRef.current, chosen, field);
+      setDeliverable(res.deliverable);
+      sidecarRef.current = res.sidecar;
+      setUndo({ record: undoRecordFor(res), label: field.label, count: res.addedIds.length });
+      setFlashItems(new Set(res.addedIds));
+      setFlashField(field.id);
+      setAnnounce(`Added ${res.addedIds.length} to ${field.label}.`);
+      if (opts?.fromSelection) {
+        setChecked(new Set()); // clear selection, stay in the mode
+        setAddOpen(false);
+      }
+      if (mode === "instrument") setUpdatedMarker(true); // mobile: don't yank away
+      requestAnimationFrame(() =>
+        fieldRefs.current[field.id]?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+      );
+    } catch {
+      // atomic: the deliverable and selection are untouched on failure.
+      setAnnounce("Couldn't add those just now. Your selection is safe — try again.");
+    }
+  }
+  function commitCheckedTo(field: DeliverableField) {
+    const chosen = blocks.filter((b) => checked.has(b.id));
+    commit(chosen, field, { fromSelection: true });
+  }
+
+  function doUndo() {
+    if (!undo) return;
+    const res = undoCommit(deliverable, sidecarRef.current, undo.record);
+    setDeliverable(res.deliverable);
+    sidecarRef.current = res.sidecar;
+    setUndo(null);
+  }
+
+  // ---- raw-selection precision fallback ----
   function readSelection() {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !transcriptRef.current) {
@@ -354,104 +526,78 @@ export default function Workbench() {
     const rect = range.getBoundingClientRect();
     setCapture({ text, x: rect.left + rect.width / 2, y: rect.top });
   }
-
-  // Shared capture: land a phrase in the chosen field, flash it, announce it,
-  // and (on mobile, where the deliverable is a separate tab) switch to it so
-  // the result is visible. Both the pointer toolbar and the keyboard picker
-  // funnel through here so they can never drift apart.
-  function commitCapture(raw: string, f: DeliverableField) {
-    const text = stripListMarker(raw);
-    if (!text) return;
-    if (f.kind === "list") {
-      setDeliverable((d) => ({
-        ...d,
-        lists: { ...d.lists, [f.id]: [...d.lists[f.id], text] },
-      }));
-    } else {
-      const target = tableTargetColumn(f.columns);
-      const row = Object.fromEntries(
-        f.columns.map((c) => [c.id, c.id === target ? text : ""]),
-      );
-      setDeliverable((d) => ({
-        ...d,
-        tables: { ...d.tables, [f.id]: [...d.tables[f.id], row] },
-      }));
-    }
-    setFlash(f.id);
-    setAnnounce(`Used in ${f.label}.`);
-    setMode("deliverable");
-    requestAnimationFrame(() =>
-      fieldRefs.current[f.id]?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
-    );
-  }
-
-  // pointer path: capture the current text selection from the floating toolbar.
-  function captureInto(f: DeliverableField) {
+  function useRawSelectionInto(field: DeliverableField) {
     if (!capture) return;
-    commitCapture(capture.text, f);
+    // one temporary synthetic block through the same commit/Undo path.
+    const synthetic: Block = { id: `raw:${idRef.current}`, kind: "text", text: capture.text };
+    commit([synthetic], field);
     setCapture(null);
     window.getSelection()?.removeAllRanges();
     transcriptRef.current?.focus();
   }
 
-  // keyboard path: capture a whole AI reply from its per-message picker.
-  function captureMessage(m: Msg, f: DeliverableField) {
-    commitCapture(m.text, f);
-    setPickerFor(null);
+  // ---- deliverable editors (id-based) ----
+  function editInvalidatesUndo(id: string) {
+    if (undo && undo.record.addedIds.includes(id)) setUndo(null);
   }
-
-  // ---- deliverable editors ----
-  function updateListItem(fieldId: string, i: number, value: string) {
-    setDeliverable((d) => {
-      const arr = [...d.lists[fieldId]];
-      arr[i] = value;
-      return { ...d, lists: { ...d.lists, [fieldId]: arr } };
-    });
+  function updateListItem(fieldId: string, id: string, value: string) {
+    editInvalidatesUndo(id);
+    setDeliverable((d) => ({
+      ...d,
+      lists: {
+        ...d.lists,
+        [fieldId]: d.lists[fieldId].map((i) => (i.id === id ? { ...i, text: value } : i)),
+      },
+    }));
   }
   function addListItem(fieldId: string) {
     setDeliverable((d) => ({
       ...d,
-      lists: { ...d.lists, [fieldId]: [...d.lists[fieldId], ""] },
+      lists: { ...d.lists, [fieldId]: [...d.lists[fieldId], newListItem("")] },
     }));
   }
-  function removeListItem(fieldId: string, i: number) {
+  function removeListItem(fieldId: string, id: string) {
+    delete sidecarRef.current[id];
     setDeliverable((d) => ({
       ...d,
-      lists: { ...d.lists, [fieldId]: d.lists[fieldId].filter((_, n) => n !== i) },
+      lists: { ...d.lists, [fieldId]: d.lists[fieldId].filter((i) => i.id !== id) },
     }));
   }
-  function updateCell(fieldId: string, i: number, col: string, value: string) {
-    setDeliverable((d) => {
-      const rows = d.tables[fieldId].map((r, n) => (n === i ? { ...r, [col]: value } : r));
-      return { ...d, tables: { ...d.tables, [fieldId]: rows } };
-    });
-  }
-  function addRow(fieldId: string, cols: string[]) {
+  function updateCell(fieldId: string, id: string, col: string, value: string) {
+    editInvalidatesUndo(id);
     setDeliverable((d) => ({
       ...d,
       tables: {
         ...d.tables,
-        [fieldId]: [...d.tables[fieldId], Object.fromEntries(cols.map((c) => [c, ""]))],
+        [fieldId]: d.tables[fieldId].map((r) =>
+          r.id === id ? { ...r, cells: { ...r.cells, [col]: value } } : r,
+        ),
       },
     }));
   }
-  function removeRow(fieldId: string, i: number) {
+  function addRow(fieldId: string, cols: string[]) {
     setDeliverable((d) => ({
       ...d,
-      tables: { ...d.tables, [fieldId]: d.tables[fieldId].filter((_, n) => n !== i) },
+      tables: { ...d.tables, [fieldId]: [...d.tables[fieldId], newTableRow(cols)] },
+    }));
+  }
+  function removeRow(fieldId: string, id: string) {
+    delete sidecarRef.current[id];
+    setDeliverable((d) => ({
+      ...d,
+      tables: { ...d.tables, [fieldId]: d.tables[fieldId].filter((r) => r.id !== id) },
     }));
   }
 
   const hint = useMemo(() => {
-    // A soft nudge, never a counter: no running tally per turn (that's the
-    // gamified-countdown the brand forbids). Only speak up once past the typical
-    // range, as reassurance rather than a score.
     if (atCeiling)
       return "You've reached this session's message limit. Finish practice when your deliverable is ready.";
     if (userTurns > 8)
       return "Past the usual 4–8 messages — that's fine. Finish when your deliverable holds up.";
     return "Most people finish in 4–8 messages.";
   }, [atCeiling, userTurns]);
+
+  const checkedCount = checked.size;
 
   return (
     <main className="flex h-screen [height:100dvh] flex-col overflow-hidden">
@@ -485,10 +631,7 @@ export default function Workbench() {
         <button
           type="button"
           onClick={() => {
-            // Empty deliverable stays clickable so the reason is discoverable
-            // (a disabled button explained only by `title` is invisible to
-            // touch, keyboard focus, and screen readers).
-            if (deliverableEmpty) {
+            if (!canFinish) {
               setEmptyHint(true);
               setAnnounce("Add at least one item to your deliverable before you can finish practice.");
               return;
@@ -506,7 +649,7 @@ export default function Workbench() {
         </button>
       </header>
 
-      {/* first-visit orientation cue — a single dismissible row, never a tour */}
+      {/* first-visit orientation cue */}
       {showGuide && (
         <div className="flex flex-none flex-wrap items-center gap-x-5 gap-y-2 border-b border-hairline bg-raised px-[clamp(1rem,3vw,1.75rem)] py-2.5 animate-fadeUp">
           <p className="meta flex-none text-ink-2">How the Workbench works</p>
@@ -531,8 +674,7 @@ export default function Workbench() {
         </div>
       )}
 
-      {/* finish confirmation — finishing is a point of no return, so it asks first
-          and surfaces any failure instead of silently re-enabling the button */}
+      {/* finish confirmation */}
       {confirming && (
         <div className="flex flex-none flex-wrap items-center gap-x-5 gap-y-3 border-b border-hairline bg-raised px-[clamp(1rem,3vw,1.75rem)] py-3 animate-fadeUp">
           <p className="min-w-0 flex-1 text-[0.9rem] leading-snug text-ink">
@@ -574,9 +716,8 @@ export default function Workbench() {
         </div>
       )}
 
-      {/* empty-deliverable hint — shown when Submit is pressed with nothing to
-          hand in; clears itself the moment the deliverable holds anything */}
-      {emptyHint && deliverableEmpty && (
+      {/* empty-deliverable hint */}
+      {emptyHint && !canFinish && (
         <div
           role="status"
           className="flex flex-none items-center gap-3 border-b border-hairline bg-raised px-[clamp(1rem,3vw,1.75rem)] py-2.5 animate-fadeUp"
@@ -596,28 +737,51 @@ export default function Workbench() {
         </div>
       )}
 
+      {/* device-local save failure — persistent until it recovers */}
+      {saveState === "error" && (
+        <div
+          role="alert"
+          className="flex flex-none items-center gap-3 border-b border-hairline px-[clamp(1rem,3vw,1.75rem)] py-2"
+          style={{ background: "color-mix(in oklab, var(--warn) 12%, var(--ground))" }}
+        >
+          <p className="min-w-0 flex-1 text-[0.82rem] leading-snug" style={{ color: "var(--warn)" }}>
+            This device couldn&rsquo;t save your latest changes. Keep this tab open
+            and finish practice when you&rsquo;re ready.
+          </p>
+        </div>
+      )}
+
       {/* mobile mode switch */}
       <div className="flex flex-none border-b border-hairline md:hidden">
         {(["deliverable", "instrument"] as const).map((m) => (
           <button
             key={m}
             type="button"
-            onClick={() => setMode(m)}
+            onClick={() => {
+              setMode(m);
+              if (m === "deliverable") setUpdatedMarker(false);
+            }}
             aria-pressed={mode === m}
             aria-controls={m === "deliverable" ? "deliverable-panel" : "instrument-panel"}
-            className="flex-1 py-2.5 text-[0.72rem] font-semibold uppercase tracking-[0.14em] transition-colors aria-[pressed=true]:text-ink text-ink-3"
+            className="relative flex-1 py-2.5 text-[0.72rem] font-semibold uppercase tracking-[0.14em] transition-colors aria-[pressed=true]:text-ink text-ink-3"
             style={{
               boxShadow:
                 mode === m ? "inset 0 -2px 0 var(--accent)" : "inset 0 -2px 0 transparent",
             }}
           >
             {m === "deliverable" ? "Deliverable" : "Work with AI"}
+            {m === "deliverable" && updatedMarker && mode !== "deliverable" && (
+              <span
+                aria-label="Updated"
+                className="absolute right-3 top-2 h-2 w-2 rounded-full"
+                style={{ background: "var(--accent)" }}
+              />
+            )}
           </button>
         ))}
       </div>
 
-      {/* working regions — grid-rows-1 bounds each column to the row height so
-          they scroll internally instead of growing past the viewport */}
+      {/* working regions */}
       <div className="grid min-h-0 flex-1 grid-rows-1 md:grid-cols-[minmax(0,0.72fr)_minmax(0,1fr)]">
         {/* INSTRUMENT column */}
         <section
@@ -627,213 +791,348 @@ export default function Workbench() {
           }`}
           aria-label="Materials and the AI"
         >
-          {/* scroll region: resources + transcript scroll here, above the fixed
-              composer footer — so a reply never renders on both sides of it */}
           <div
             className="min-h-0 flex-1 overflow-y-auto px-[clamp(1rem,2.5vw,1.5rem)] py-5"
             onScroll={() => capture && setCapture(null)}
           >
-          {/* working rules — the mission's constraints, carried from the
-              Briefing so the operator isn't scored on a rule that's off-screen */}
-          {mission.briefing.constraints.length > 0 && (
-            <div className="mb-7">
-              <h2 className="section-label mb-2.5">What matters</h2>
-              <ul className="m-0 list-none space-y-1.5 p-0">
-                {mission.briefing.constraints.map((c, i) => (
-                  <li
-                    key={i}
-                    className="flex gap-2.5 text-[0.82rem] leading-snug text-ink-2"
+            {/* working rules — collapsible after the conversation starts */}
+            {mission.briefing.constraints.length > 0 && (
+              <div className="mb-7">
+                <button
+                  type="button"
+                  onClick={() => setCollapseMatters((v) => !v)}
+                  aria-expanded={!collapseMatters}
+                  className="mb-2.5 flex w-full items-center gap-2 text-left"
+                >
+                  <h2 className="section-label m-0">What matters</h2>
+                  {collapseMatters && (
+                    <span className="meta text-ink-3">({mission.briefing.constraints.length})</span>
+                  )}
+                  <span
+                    aria-hidden
+                    className="ml-auto text-ink-3 transition-transform"
+                    style={{ transform: collapseMatters ? "rotate(0deg)" : "rotate(90deg)" }}
                   >
-                    <span
-                      aria-hidden
-                      className="mt-[0.5em] h-[4px] w-[4px] flex-none rounded-full bg-ink-3"
-                    />
-                    {c}
-                  </li>
-                ))}
-              </ul>
+                    ›
+                  </span>
+                </button>
+                {!collapseMatters && (
+                  <ul className="m-0 list-none space-y-1.5 p-0">
+                    {mission.briefing.constraints.map((c, i) => (
+                      <li key={i} className="flex gap-2.5 text-[0.82rem] leading-snug text-ink-2">
+                        <span
+                          aria-hidden
+                          className="mt-[0.5em] h-[4px] w-[4px] flex-none rounded-full bg-ink-3"
+                        />
+                        {c}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {/* materials — collapsible; expandable mid-session to share/remove */}
+            <button
+              type="button"
+              onClick={() => setCollapseMaterials((v) => !v)}
+              aria-expanded={!collapseMaterials}
+              className="mb-2 flex w-full items-center gap-2 text-left"
+            >
+              <h2 className="section-label m-0">Materials</h2>
+              {collapseMaterials && (
+                <span className="meta text-ink-3">
+                  {given.length > 0 ? `${given.length} shared` : "none shared"}
+                </span>
+              )}
+              <span
+                aria-hidden
+                className="ml-auto text-ink-3 transition-transform"
+                style={{ transform: collapseMaterials ? "rotate(0deg)" : "rotate(90deg)" }}
+              >
+                ›
+              </span>
+            </button>
+            {!collapseMaterials && (
+              <>
+                <p className="mb-4 max-w-[42ch] text-[0.82rem] leading-snug text-ink-2">
+                  Choose what the AI needs. It only receives the materials you share
+                  with it.
+                </p>
+                <ul className="m-0 list-none space-y-2 p-0">
+                  {mission.resources.map((r) => {
+                    const isGiven = given.includes(r.id);
+                    const isOpen = openResource === r.id;
+                    return (
+                      <li key={r.id} className="rounded-sm border border-hairline bg-raised">
+                        <div className="flex items-start gap-3 p-3">
+                          <button
+                            type="button"
+                            onClick={() => setOpenResource(isOpen ? null : r.id)}
+                            className="min-w-0 flex-1 text-left"
+                            aria-expanded={isOpen}
+                          >
+                            <span className="block text-[0.95rem] font-semibold text-ink">
+                              {r.label}
+                            </span>
+                            <span className="mt-0.5 block text-[0.82rem] leading-snug text-ink-2">
+                              {r.summary}
+                            </span>
+                          </button>
+                          {isGiven ? (
+                            <button
+                              type="button"
+                              onClick={() => ungiveResource(r.id)}
+                              aria-label={`Remove ${r.label} from the AI`}
+                              title="Remove from AI"
+                              className="group/give flex min-h-[44px] flex-none items-center gap-[0.5ch] whitespace-nowrap rounded-sm px-1.5 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.09em] transition-colors hover:text-ink"
+                              style={{ color: "var(--good)" }}
+                            >
+                              <Check width={12} height={10} />
+                              <span className="group-hover/give:hidden">Shared with AI</span>
+                              <span className="hidden group-hover/give:inline">Remove from AI</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => giveResource(r.id)}
+                              aria-label={`Share ${r.label} with the AI`}
+                              className="btn btn--ghost flex-none"
+                              style={{ padding: "0.5em 0.85em", fontSize: "0.8rem", minHeight: "44px" }}
+                            >
+                              Share with AI
+                            </button>
+                          )}
+                        </div>
+                        {isOpen && (
+                          <pre className="m-0 max-h-56 overflow-auto border-t border-hairline px-3 py-3 font-sans text-[0.82rem] leading-relaxed text-ink-2 whitespace-pre-wrap">
+                            {r.content}
+                          </pre>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
+
+            {/* work with the AI / transcript */}
+            <h2 className="section-label mb-1.5 mt-8">Work with the AI</h2>
+            <p className="mb-3 max-w-[42ch] text-[0.82rem] leading-snug text-ink-2">
+              Tell the AI what you need. It will follow your instructions, but it
+              won&rsquo;t fill in missing context or correct weak decisions for you.
+            </p>
+            <div className="min-h-0">
+              {messages.length === 0 && !thinking ? null : (
+                <ol
+                  ref={transcriptRef}
+                  onMouseUp={readSelection}
+                  onKeyUp={readSelection}
+                  tabIndex={-1}
+                  role="log"
+                  aria-live="polite"
+                  aria-busy={thinking}
+                  aria-label="Your exchange with the AI"
+                  className="m-0 list-none space-y-4 p-0 outline-none"
+                >
+                  {messages.map((m, mi) => {
+                    // A reply is selectable only once it's finished — never while
+                    // it's still streaming (the last message during `thinking`).
+                    const streaming = thinking && mi === messages.length - 1;
+                    const complete = m.role === "ai" && !m.error && m.text.length > 0 && !streaming;
+                    const inSelection = selecting === m.id;
+                    return (
+                      <li key={m.id} data-role={m.role} className="animate-fadeUp">
+                        <span
+                          className="meta"
+                          style={{
+                            color: m.error
+                              ? "var(--warn)"
+                              : m.role === "user"
+                                ? "var(--accent)"
+                                : "var(--ink-3)",
+                          }}
+                        >
+                          {m.error ? "Couldn't respond" : m.role === "user" ? "You" : "AI"}
+                        </span>
+                        {m.text ? (
+                          m.error ? (
+                            <p
+                              role="alert"
+                              className="mt-1 text-[0.9rem] italic leading-relaxed"
+                              style={{ color: "var(--ink-2)" }}
+                            >
+                              {m.text.replace(/^\[|\]$/g, "")}
+                            </p>
+                          ) : inSelection ? (
+                            <SelectionView
+                              blocks={blocks}
+                              checked={checked}
+                              onToggle={toggleBlock}
+                            />
+                          ) : (
+                            <>
+                              <p className="mt-1 whitespace-pre-wrap text-[0.92rem] leading-relaxed text-ink">
+                                {m.text}
+                              </p>
+                              {m.role === "ai" &&
+                                complete &&
+                                (switchTo === m.id ? (
+                                  <span className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-sm border border-hairline bg-raised p-2 text-[0.82rem]">
+                                    <span className="text-ink-2">
+                                      You have an unsent selection.
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => confirmSwitch(false)}
+                                      className="btn--ghost"
+                                      style={{ padding: "0.35em 0.7em", fontSize: "0.8rem" }}
+                                    >
+                                      Keep selecting from that response
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => confirmSwitch(true)}
+                                      className="btn"
+                                      style={{ padding: "0.35em 0.7em", fontSize: "0.8rem" }}
+                                    >
+                                      Discard selection and switch
+                                    </button>
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    data-use-btn={m.id}
+                                    onClick={() => useInDeliverable(m.id)}
+                                    className="mt-1.5 inline-flex min-h-[24px] items-center py-1 text-[0.78rem] font-semibold text-ink-3 transition-colors hover:text-accent"
+                                  >
+                                    + Use in deliverable
+                                  </button>
+                                ))}
+                            </>
+                          )
+                        ) : (
+                          <p className="mt-1 flex items-center gap-1.5">
+                            <span className="sr-only" role="status">
+                              The AI is responding…
+                            </span>
+                            <span
+                              aria-hidden
+                              className="hidden text-[0.82rem] italic text-ink-3 motion-reduce:inline"
+                            >
+                              Thinking…
+                            </span>
+                            {[0, 1, 2].map((i) => (
+                              <span
+                                key={i}
+                                aria-hidden
+                                className="h-[6px] w-[6px] rounded-full bg-ink-3 animate-breathe motion-reduce:hidden"
+                                style={{ animationDelay: `${i * 0.18}s` }}
+                              />
+                            ))}
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </div>
+          </div>
+
+          {/* commit feedback + shallow Undo — its own row so it's reachable after
+              a raw-selection commit too, not only inside selection mode */}
+          {undo && (
+            <div className="flex-none border-t border-hairline bg-raised px-[clamp(1rem,2.5vw,1.5rem)] py-2">
+              <div
+                className="flex items-center gap-3 rounded-sm px-2 py-1.5 text-[0.82rem]"
+                style={{ background: "color-mix(in oklab, var(--accent) 10%, transparent)" }}
+              >
+                <span className="min-w-0 flex-1 text-ink-2">
+                  Added {undo.count} to <span className="font-semibold text-ink">{undo.label}</span>.
+                </span>
+                <button
+                  type="button"
+                  onClick={doUndo}
+                  onFocus={() => setUndoFocused(true)}
+                  onBlur={() => setUndoFocused(false)}
+                  className="flex-none font-semibold text-accent hover:underline"
+                >
+                  Undo
+                </button>
+              </div>
             </div>
           )}
 
-          {/* materials */}
-          <h2 className="section-label mb-2">Materials</h2>
-          <p className="mb-4 max-w-[42ch] text-[0.82rem] leading-snug text-ink-2">
-            Choose what the AI needs. It only receives the materials you share
-            with it.
-          </p>
-          <ul className="m-0 list-none space-y-2 p-0">
-            {mission.resources.map((r) => {
-              const isGiven = given.includes(r.id);
-              const isOpen = openResource === r.id;
-              return (
-                <li key={r.id} className="rounded-sm border border-hairline bg-raised">
-                  <div className="flex items-start gap-3 p-3">
-                    <button
-                      type="button"
-                      onClick={() => setOpenResource(isOpen ? null : r.id)}
-                      className="min-w-0 flex-1 text-left"
-                      aria-expanded={isOpen}
-                    >
-                      <span className="block text-[0.95rem] font-semibold text-ink">
-                        {r.label}
-                      </span>
-                      <span className="mt-0.5 block text-[0.82rem] leading-snug text-ink-2">
-                        {r.summary}
-                      </span>
-                    </button>
-                    {isGiven ? (
-                      <button
-                        type="button"
-                        onClick={() => ungiveResource(r.id)}
-                        aria-label={`Remove ${r.label} from the AI`}
-                        title="Remove from AI"
-                        className="group/give flex min-h-[44px] flex-none items-center gap-[0.5ch] whitespace-nowrap rounded-sm px-1.5 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.09em] transition-colors hover:text-ink"
-                        style={{ color: "var(--good)" }}
-                      >
-                        <Check width={12} height={10} />
-                        <span className="group-hover/give:hidden">Shared with AI</span>
-                        <span className="hidden group-hover/give:inline">Remove from AI</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => giveResource(r.id)}
-                        aria-label={`Share ${r.label} with the AI`}
-                        className="btn btn--ghost flex-none"
-                        style={{ padding: "0.5em 0.85em", fontSize: "0.8rem", minHeight: "44px" }}
-                      >
-                        Share with AI
-                      </button>
-                    )}
-                  </div>
-                  {isOpen && (
-                    <pre className="m-0 max-h-56 overflow-auto border-t border-hairline px-3 py-3 font-sans text-[0.82rem] leading-relaxed text-ink-2 whitespace-pre-wrap">
-                      {r.content}
-                    </pre>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-          {/* work with the AI / transcript */}
-          <h2 className="section-label mb-1.5 mt-8">Work with the AI</h2>
-          <p className="mb-3 max-w-[42ch] text-[0.82rem] leading-snug text-ink-2">
-            Tell the AI what you need. It will follow your instructions, but it
-            won&rsquo;t fill in missing context or correct weak decisions for you.
-          </p>
-          <div className="min-h-0">
-            {messages.length === 0 && !thinking ? null : (
-              <ol
-                ref={transcriptRef}
-                onMouseUp={readSelection}
-                onKeyUp={readSelection}
-                tabIndex={-1}
-                role="log"
-                aria-live="polite"
-                aria-busy={thinking}
-                aria-label="Your exchange with the AI"
-                className="m-0 list-none space-y-4 p-0 outline-none"
-              >
-                {messages.map((m) => (
-                  <li key={m.id} data-role={m.role} className="animate-fadeUp">
-                    <span
-                      className="meta"
-                      style={{
-                        color: m.error
-                          ? "var(--warn)"
-                          : m.role === "user"
-                            ? "var(--accent)"
-                            : "var(--ink-3)",
-                      }}
-                    >
-                      {m.error ? "Couldn't respond" : m.role === "user" ? "You" : "AI"}
-                    </span>
-                    {m.text ? (
-                      m.error ? (
-                        <p
-                          role="alert"
-                          className="mt-1 text-[0.9rem] italic leading-relaxed"
-                          style={{ color: "var(--ink-2)" }}
-                        >
-                          {m.text.replace(/^\[|\]$/g, "")}
-                        </p>
-                      ) : (
-                        <>
-                          <p className="mt-1 whitespace-pre-wrap text-[0.92rem] leading-relaxed text-ink">
-                            {m.text}
-                          </p>
-                          {m.role === "ai" &&
-                            (pickerFor === m.id ? (
-                              <span
-                                role="group"
-                                aria-label="Use this reply in your deliverable"
-                                className="mt-2 inline-flex flex-wrap items-center gap-1 rounded-sm border border-hairline bg-raised p-1"
-                              >
-                                <span className="meta whitespace-nowrap px-1 text-ink-3">
-                                  Use in
-                                </span>
-                                {spec.fields.map((f) => (
-                                  <button
-                                    key={f.id}
-                                    type="button"
-                                    onClick={() => captureMessage(m, f)}
-                                    className="whitespace-nowrap rounded-sm px-2 py-1 text-[0.8rem] font-semibold text-ink transition-colors hover:bg-accent hover:text-on-accent"
-                                  >
-                                    {f.label}
-                                  </button>
-                                ))}
-                                <button
-                                  type="button"
-                                  onClick={() => setPickerFor(null)}
-                                  aria-label="Cancel using in deliverable"
-                                  className="flex h-6 w-6 items-center justify-center rounded-sm text-ink-3 transition-colors hover:text-ink"
-                                >
-                                  ×
-                                </button>
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => setPickerFor(m.id)}
-                                className="mt-1.5 inline-flex min-h-[24px] items-center py-1 text-[0.78rem] font-semibold text-ink-3 transition-colors hover:text-accent"
-                              >
-                                + Use in deliverable
-                              </button>
-                            ))}
-                        </>
-                      )
-                    ) : (
-                      <p className="mt-1 flex items-center gap-1.5">
-                        <span className="sr-only" role="status">
-                          The AI is responding…
-                        </span>
-                        {/* reduced motion freezes the pulse, so a visible text
-                            cue replaces the dots — sighted users still get a
-                            "working" signal, not three static dots */}
-                        <span
-                          aria-hidden
-                          className="hidden text-[0.82rem] italic text-ink-3 motion-reduce:inline"
-                        >
-                          Thinking…
-                        </span>
-                        {[0, 1, 2].map((i) => (
-                          <span
-                            key={i}
-                            aria-hidden
-                            className="h-[6px] w-[6px] rounded-full bg-ink-3 animate-breathe motion-reduce:hidden"
-                            style={{ animationDelay: `${i * 0.18}s` }}
-                          />
-                        ))}
-                      </p>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
-          </div>
+          {/* sticky selection action bar — flex-none, bound to this column so it
+              stays reachable while a tall reply scrolls above it */}
+          {selecting && (
+            <div className="flex-none border-t border-hairline bg-raised px-[clamp(1rem,2.5vw,1.5rem)] py-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="meta text-ink-2" role="status" aria-live="polite">
+                  {checkedCount > 0
+                    ? `${checkedCount} selected`
+                    : "Select the parts you want"}
+                </span>
+                <button
+                  type="button"
+                  onClick={checkedCount === blocks.length ? clearChecked : selectAll}
+                  className="btn--ghost"
+                  style={{ padding: "0.4em 0.75em", fontSize: "0.8rem", minHeight: "40px" }}
+                >
+                  {checkedCount === blocks.length && blocks.length > 0 ? "Clear" : "Select all"}
+                </button>
 
-          {/* composer — a fixed footer; the transcript scrolls above it */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setAddOpen((v) => !v)}
+                    disabled={checkedCount === 0}
+                    aria-haspopup="menu"
+                    aria-expanded={addOpen}
+                    aria-label={
+                      checkedCount > 0
+                        ? `Add ${checkedCount} selected block${checkedCount > 1 ? "s" : ""} to a deliverable section`
+                        : "Add selected blocks to a deliverable section"
+                    }
+                    className="btn"
+                    style={{ padding: "0.4em 0.85em", fontSize: "0.8rem", minHeight: "40px" }}
+                  >
+                    Add to…
+                  </button>
+                  {addOpen && checkedCount > 0 && (
+                    <div
+                      role="menu"
+                      className="absolute bottom-full left-0 z-10 mb-1 min-w-[12rem] rounded-sm border border-hairline bg-raised p-1 shadow-layer"
+                    >
+                      {spec.fields.map((f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          role="menuitem"
+                          onClick={() => commitCheckedTo(f)}
+                          className="block w-full rounded-sm px-2.5 py-2 text-left text-[0.85rem] font-medium text-ink transition-colors hover:bg-accent hover:text-on-accent"
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={doneSelecting}
+                  className="btn--quiet ml-auto"
+                  style={{ minHeight: "40px" }}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* composer */}
           <div className="flex-none border-t border-hairline bg-ground px-[clamp(1rem,2.5vw,1.5rem)] py-3">
             <div className="flex items-end gap-2 rounded-sm border border-hairline bg-raised p-2 focus-within:border-accent">
               <textarea
@@ -875,7 +1174,7 @@ export default function Workbench() {
           </div>
         </section>
 
-        {/* DELIVERABLE column — the primary region */}
+        {/* DELIVERABLE column */}
         <section
           id="deliverable-panel"
           className={`min-h-0 flex-col overflow-y-auto bg-ground px-[clamp(1rem,3vw,2.25rem)] py-6 md:flex ${
@@ -888,7 +1187,20 @@ export default function Workbench() {
               <p className="section-label mb-1">You&rsquo;re building</p>
               <h2 className="heading text-[1.4rem] text-ink">{spec.title}</h2>
             </div>
+            {saveState === "saved" && (
+              <span className="meta flex-none text-ink-3" title="Saved on this device only">
+                Saved on this device
+              </span>
+            )}
           </div>
+
+          {!canFinish && (
+            <p className="mb-6 max-w-[46ch] text-[0.9rem] leading-relaxed text-ink-3">
+              This is yours to write. Work with the AI and add useful output to a
+              section, or type into any section directly — you decide what&rsquo;s
+              worth keeping, and everything here stays editable.
+            </p>
+          )}
 
           <div className="space-y-8">
             {spec.fields.map((f) => (
@@ -897,7 +1209,7 @@ export default function Workbench() {
                 ref={(el) => {
                   fieldRefs.current[f.id] = el;
                 }}
-                className={`rounded-sm px-1 ${flash === f.id ? "animate-wash" : ""}`}
+                className={`rounded-sm px-1 ${flashField === f.id ? "animate-wash" : ""}`}
               >
                 <h3 className="section-label mb-3" style={{ color: "var(--ink-2)" }}>
                   {f.label}
@@ -906,38 +1218,32 @@ export default function Workbench() {
                 {f.kind === "list" ? (
                   <ListEditor
                     label={f.label}
+                    addLabel={createLabel(f)}
                     items={deliverable.lists[f.id] ?? []}
                     placeholder={f.placeholder}
-                    onChange={(i, v) => updateListItem(f.id, i, v)}
+                    flash={flashItems}
+                    onChange={(id, v) => updateListItem(f.id, id, v)}
                     onAdd={() => addListItem(f.id)}
-                    onRemove={(i) => removeListItem(f.id, i)}
+                    onRemove={(id) => removeListItem(f.id, id)}
                   />
                 ) : (
                   <TableEditor
                     columns={f.columns}
+                    addLabel={createLabel(f)}
                     rows={deliverable.tables[f.id] ?? []}
-                    onChange={(i, c, v) => updateCell(f.id, i, c, v)}
+                    flash={flashItems}
+                    onChange={(id, c, v) => updateCell(f.id, id, c, v)}
                     onAdd={() => addRow(f.id, f.columns.map((c) => c.id))}
-                    onRemove={(i) => removeRow(f.id, i)}
+                    onRemove={(id) => removeRow(f.id, id)}
                   />
                 )}
               </div>
             ))}
           </div>
-
-          {deliverableEmpty && (
-            <p className="mt-8 max-w-[44ch] text-[0.9rem] leading-relaxed text-ink-3">
-              This is what you&rsquo;ll produce. Work with the AI, add useful
-              output to the appropriate section, or write here directly. You
-              decide what&rsquo;s worth keeping.
-            </p>
-          )}
         </section>
       </div>
 
-      {/* select-to-capture toolbar — anchored above the AI-text selection.
-          Focus moves here on open and Escape returns it to the transcript (see
-          the capture effect), so it works without a mouse. */}
+      {/* raw-selection precision toolbar — optional shortcut */}
       {capture && (
         <div
           ref={captureRef}
@@ -947,12 +1253,12 @@ export default function Workbench() {
           style={{ left: capture.x, top: capture.y - 10, transform: "translate(-50%, -100%)" }}
           onMouseDown={(e) => e.preventDefault()}
         >
-          <span className="meta whitespace-nowrap px-1.5 text-ink-3">Use in</span>
+          <span className="meta whitespace-nowrap px-1.5 text-ink-3">Use selection in</span>
           {spec.fields.map((f) => (
             <button
               key={f.id}
               type="button"
-              onClick={() => captureInto(f)}
+              onClick={() => useRawSelectionInto(f)}
               className="whitespace-nowrap rounded-sm px-2 py-1 text-[0.8rem] font-semibold text-ink transition-colors hover:bg-accent hover:text-on-accent"
             >
               {f.label}
@@ -961,8 +1267,7 @@ export default function Workbench() {
         </div>
       )}
 
-      {/* single polite live region: announces captures and submit failures so
-          screen-reader users aren't left guessing what changed */}
+      {/* single polite live region */}
       <div className="sr-only" role="status" aria-live="polite">
         {announce}
       </div>
@@ -970,13 +1275,67 @@ export default function Workbench() {
   );
 }
 
+/* ---------- selection view ---------- */
+
+// Renders a completed AI reply as its mechanical blocks, each with a persistent
+// checkbox. Consecutive blocks under the same heading are grouped under a shown
+// (non-selectable) context label. Large tap targets; native checkboxes keep it
+// keyboard- and screen-reader-friendly.
+function SelectionView({
+  blocks,
+  checked,
+  onToggle,
+}: {
+  blocks: Block[];
+  checked: Set<string>;
+  onToggle: (id: string) => void;
+}) {
+  return (
+    // Named group so a screen-reader user knows they've entered block selection.
+    <div
+      role="group"
+      aria-label="Select useful blocks from this AI response."
+      className="mt-1.5 space-y-1.5"
+    >
+      {blocks.map((b, i) => {
+        const prev = blocks[i - 1];
+        const showLabel = b.contextLabel && b.contextLabel !== prev?.contextLabel;
+        // Short positional name on the checkbox; the full block text is the
+        // description (via aria-describedby) so it is read once, not twice, and a
+        // long paragraph never becomes the control's name.
+        const textId = `blk-${b.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+        return (
+          <div key={b.id}>
+            {showLabel && (
+              <p className="meta mb-1 mt-2 text-ink-3">{b.contextLabel}</p>
+            )}
+            <label
+              className="flex cursor-pointer items-start gap-2.5 rounded-sm border border-hairline p-2.5 transition-colors hover:border-accent has-[:checked]:border-accent has-[:checked]:bg-[color-mix(in_oklab,var(--accent)_8%,transparent)]"
+            >
+              <input
+                type="checkbox"
+                checked={checked.has(b.id)}
+                onChange={() => onToggle(b.id)}
+                aria-label={`Select block ${i + 1} of ${blocks.length}`}
+                aria-describedby={textId}
+                className="mt-0.5 h-[18px] w-[18px] flex-none accent-[var(--accent)]"
+              />
+              <span
+                id={textId}
+                className="min-w-0 flex-1 whitespace-pre-wrap text-[0.9rem] leading-relaxed text-ink"
+              >
+                {b.text}
+              </span>
+            </label>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ---------- editors ---------- */
 
-// A textarea that grows to fit its content, so a multi-sentence capture is
-// fully visible instead of clipped behind a one-line scroll. Height is set
-// after render (useEffect, not layout effect, to avoid the SSR warning); the
-// brief first-paint reflow is invisible for content that arrives post-mount
-// (captures, restored drafts, typing).
 function GrowText({
   value,
   className = "",
@@ -1002,21 +1361,23 @@ function GrowText({
 
 function ListEditor({
   label,
+  addLabel,
   items,
   placeholder,
+  flash,
   onChange,
   onAdd,
   onRemove,
 }: {
   label: string;
-  items: string[];
+  addLabel: string;
+  items: EditableListItem[];
   placeholder: string;
-  onChange: (i: number, v: string) => void;
+  flash: Set<string>;
+  onChange: (id: string, v: string) => void;
   onAdd: () => void;
-  onRemove: (i: number) => void;
+  onRemove: (id: string) => void;
 }) {
-  // Focus the field created by an explicit "+ add" (not one landed by a capture,
-  // which manages its own focus) so a keyboard user can type straight away.
   const listRef = useRef<HTMLDivElement>(null);
   const pendingFocus = useRef(false);
   useEffect(() => {
@@ -1028,30 +1389,37 @@ function ListEditor({
 
   return (
     <div className="space-y-2" ref={listRef}>
-      {items.map((item, i) => (
-        <div key={i} className="flex items-start gap-1">
-          <span
-            aria-hidden
-            className="mt-[0.9em] h-[5px] w-[5px] flex-none rounded-full bg-ink-3"
-          />
-          <GrowText
-            value={item}
-            onChange={(e) => onChange(i, e.target.value)}
-            placeholder={placeholder}
-            aria-label={`${label} — item ${i + 1}`}
-            data-gramm="false"
-            className="min-h-0 flex-1 border-b border-hairline bg-transparent py-1.5 text-[0.95rem] leading-relaxed text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-accent"
-          />
-          <button
-            type="button"
-            onClick={() => onRemove(i)}
-            aria-label="Remove"
-            className="-mr-2 flex h-11 w-11 flex-none items-center justify-center text-ink-3 transition-colors hover:text-ink"
+      {items.map((item, i) => {
+        const isNew = flash.has(item.id);
+        return (
+          <div
+            key={item.id}
+            className={`flex items-start gap-1 rounded-sm transition-colors ${
+              isNew
+                ? "border-l-2 border-accent pl-2 bg-[color-mix(in_oklab,var(--accent)_7%,transparent)]"
+                : "border-l-2 border-transparent pl-2"
+            }`}
           >
-            ×
-          </button>
-        </div>
-      ))}
+            <span aria-hidden className="mt-[0.9em] h-[5px] w-[5px] flex-none rounded-full bg-ink-3" />
+            <GrowText
+              value={item.text}
+              onChange={(e) => onChange(item.id, e.target.value)}
+              placeholder={placeholder}
+              aria-label={`${label} — item ${i + 1}`}
+              data-gramm="false"
+              className="min-h-0 flex-1 border-b border-hairline bg-transparent py-1.5 text-[0.95rem] leading-relaxed text-ink outline-none transition-colors placeholder:text-ink-3 focus:border-accent"
+            />
+            <button
+              type="button"
+              onClick={() => onRemove(item.id)}
+              aria-label="Remove"
+              className="-mr-2 flex h-11 w-11 flex-none items-center justify-center text-ink-3 transition-colors hover:text-ink"
+            >
+              ×
+            </button>
+          </div>
+        );
+      })}
       <button
         type="button"
         onClick={() => {
@@ -1060,7 +1428,7 @@ function ListEditor({
         }}
         className="inline-flex min-h-[44px] items-center py-1 text-[0.82rem] font-semibold text-ink-3 transition-colors hover:text-accent"
       >
-        + add
+        + {addLabel}
       </button>
     </div>
   );
@@ -1068,19 +1436,21 @@ function ListEditor({
 
 function TableEditor({
   columns,
+  addLabel,
   rows,
+  flash,
   onChange,
   onAdd,
   onRemove,
 }: {
   columns: { id: string; label: string; placeholder: string }[];
-  rows: Record<string, string>[];
-  onChange: (i: number, col: string, v: string) => void;
+  addLabel: string;
+  rows: EditableTableRow[];
+  flash: Set<string>;
+  onChange: (id: string, col: string, v: string) => void;
   onAdd: () => void;
-  onRemove: (i: number) => void;
+  onRemove: (id: string) => void;
 }) {
-  // Focus the first cell of a row created by "+ add row" (not one landed by a
-  // capture, which manages its own focus).
   const tableRef = useRef<HTMLDivElement>(null);
   const pendingFocus = useRef(false);
   useEffect(() => {
@@ -1114,35 +1484,54 @@ function TableEditor({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, i) => (
-                <tr key={i} className="align-top">
-                  {columns.map((c, ci) => (
-                    <td key={c.id} className="border-b border-hairline py-1 pr-3">
-                      <GrowText
-                        value={row[c.id] ?? ""}
-                        onChange={(e) => onChange(i, c.id, e.target.value)}
-                        placeholder={c.placeholder}
-                        aria-label={`${c.label}, row ${i + 1}`}
-                        data-gramm="false"
-                        className={`min-h-0 w-full bg-transparent py-1 text-[0.92rem] leading-snug text-ink outline-none placeholder:text-ink-3 ${
-                          ci === 0 ? "font-semibold" : ""
-                        }`}
-                        style={{ minWidth: ci === 0 ? "5rem" : "7rem" }}
-                      />
+              {rows.map((row, i) => {
+                const isNew = flash.has(row.id);
+                return (
+                  <tr
+                    key={row.id}
+                    className="align-top"
+                    style={
+                      isNew
+                        ? { background: "color-mix(in oklab, var(--accent) 7%, transparent)" }
+                        : undefined
+                    }
+                  >
+                    {columns.map((c, ci) => (
+                      <td
+                        key={c.id}
+                        className="border-b border-hairline py-1 pr-3"
+                        style={
+                          isNew && ci === 0
+                            ? { boxShadow: "inset 2px 0 0 var(--accent)" }
+                            : undefined
+                        }
+                      >
+                        <GrowText
+                          value={row.cells[c.id] ?? ""}
+                          onChange={(e) => onChange(row.id, c.id, e.target.value)}
+                          placeholder={c.placeholder}
+                          aria-label={`${c.label}, row ${i + 1}`}
+                          data-gramm="false"
+                          className={`min-h-0 w-full bg-transparent py-1 text-[0.92rem] leading-snug text-ink outline-none placeholder:text-ink-3 ${
+                            ci === 0 ? "font-semibold" : ""
+                          }`}
+                          style={{ minWidth: ci === 0 ? "5rem" : "7rem" }}
+                        />
+                      </td>
+                    ))}
+                    <td className="border-b border-hairline text-center">
+                      <button
+                        type="button"
+                        onClick={() => onRemove(row.id)}
+                        aria-label="Remove row"
+                        className="mx-auto flex h-11 w-11 items-center justify-center text-ink-3 transition-colors hover:text-ink"
+                      >
+                        ×
+                      </button>
                     </td>
-                  ))}
-                  <td className="border-b border-hairline text-center">
-                    <button
-                      type="button"
-                      onClick={() => onRemove(i)}
-                      aria-label="Remove row"
-                      className="mx-auto flex h-11 w-11 items-center justify-center text-ink-3 transition-colors hover:text-ink"
-                    >
-                      ×
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1155,7 +1544,7 @@ function TableEditor({
         }}
         className="mt-2 inline-flex min-h-[44px] items-center py-1 text-[0.82rem] font-semibold text-ink-3 transition-colors hover:text-accent"
       >
-        + add row
+        + {addLabel}
       </button>
     </div>
   );
