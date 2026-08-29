@@ -215,10 +215,20 @@ export function FieldProvider({ children }: { children: ReactNode }) {
           completed.map((c) => c.missionId),
         );
 
+        // `is_anonymous` is read from the LOCAL session (getSession, no refresh),
+        // and that claim can lag the real state right after a Google link —
+        // leaving a signed-in user still marked anonymous (so the sign-out control
+        // and the "already saved" logic misfire). A genuinely anonymous user has
+        // no email and only the "anonymous" provider, so treat any real identity
+        // as non-anonymous regardless of the possibly-stale flag.
+        const providers = (user.app_metadata?.providers ?? []) as string[];
+        const hasRealIdentity =
+          !!user.email || providers.some((p) => p && p !== "anonymous");
+
         setState({
           hydrated: true,
           userId: user.id,
-          isAnonymous: user.is_anonymous ?? true,
+          isAnonymous: (user.is_anonymous ?? true) && !hasRealIdentity,
           onboarded: !!profileRow?.onboarded,
           onboarding: {
             role: profileRow?.role ?? undefined,
