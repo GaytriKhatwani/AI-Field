@@ -24,6 +24,7 @@ import {
   type EditableTableRow,
   type RowSourceSidecar,
   type UndoRecord,
+  type AddedBlockRegistry,
 } from "@/lib/workbench/transfer";
 
 const HARD_CEILING = 12;
@@ -86,6 +87,12 @@ export default function Workbench() {
   // removing an entry — by hand or via Undo — free that block's section
   // membership so it can be transferred again. Session-only, like addedBlocks.
   const entryOriginRef = useRef<Record<string, { blockId: string; fieldId: string }>>({});
+  // The duplicate-commit guard's live value (blockId → field ids already holding
+  // it), enforced inside commitBlocks/undoCommit themselves — not just a UI
+  // pre-filter. A ref, not state: commit() reads it synchronously so two calls
+  // in the same tick (e.g. a fast double-click) can never both see a stale
+  // "not yet added" snapshot. `addedBlocks` state below mirrors it for render.
+  const addedBlocksRef = useRef<AddedBlockRegistry>({});
 
   const idRef = useRef(0);
 
@@ -99,14 +106,13 @@ export default function Workbench() {
   const [switchTo, setSwitchTo] = useState<string | null>(null);
 
   // ---- feedback + shallow Undo ----
-  // blockIds/fieldId let Undo also reverse the addedBlocks membership for the
-  // exact blocks this commit transferred, re-opening them for re-adding.
+  // record.blockIds/record.fieldId (from undoRecordFor) let Undo also reverse
+  // the duplicate-guard registry for the exact blocks this commit transferred,
+  // re-opening them for re-adding to that same field.
   const [undo, setUndo] = useState<{
     record: UndoRecord;
     label: string;
     count: number;
-    blockIds: string[];
-    fieldId: string;
   } | null>(null);
   const [flashItems, setFlashItems] = useState<Set<string>>(new Set());
   const [flashField, setFlashField] = useState<string | null>(null);
@@ -128,12 +134,12 @@ export default function Workbench() {
   const [confirming, setConfirming] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  // Blocks already transferred, per AI reply: blockId → the section ids it landed
-  // in. Powers the "already added" marker in selection mode and the commit-time
-  // dedupe that stops a silent duplicate into the *same* section (a block can
-  // still go to a different one). Session-only, reversed on Undo; never persisted
-  // and structurally unable to reach the deliverable or the submit payload.
-  const [addedBlocks, setAddedBlocks] = useState<Record<string, string[]>>({});
+  // Render-facing mirror of addedBlocksRef (React state can't be read
+  // synchronously by commit(), so the ref is the actual guard — see above).
+  // Powers the "already added" marker in selection mode and the destination
+  // menu's disabled/marked state. Session-only, reversed on Undo; never
+  // persisted and structurally unable to reach the deliverable or submit payload.
+  const [addedBlocks, setAddedBlocks] = useState<AddedBlockRegistry>({});
   // one polite live region drives every screen-reader status announcement.
   const [announce, setAnnounce] = useState("");
 
@@ -486,55 +492,32 @@ export default function Workbench() {
 
   // Land a batch (or a single synthetic raw-selection block) into one section,
   // atomically, and set up feedback + Undo. Shared by block selection and the
-  // raw-selection fallback so they can never drift apart.
+  // raw-selection fallback so they can never drift apart. The duplicate guard
+  // is enforced INSIDE commitBlocks itself (keyed by block id, never text) —
+  // reading addedBlocksRef.current, not the `addedBlocks` state, so two calls
+  // in the same tick can't both act on a stale "not yet added" snapshot.
   function commit(chosen: Block[], field: DeliverableField, opts?: { fromSelection?: boolean }) {
     if (chosen.length === 0) return;
-    // Drop blocks already transferred into THIS section, so a re-add can't create
-    // a silent duplicate. Synthetic raw-selection blocks carry no membership and
-    // always pass; a block can still be added to a *different* section.
-    const fresh = chosen.filter((b) => !(addedBlocks[b.id] ?? []).includes(field.id));
-    if (fresh.length === 0) {
-      setAnnounce(
-        `Already added to ${field.label}${chosen.length > 1 ? " — nothing new to add" : ""}.`,
-      );
-      if (opts?.fromSelection) setAddOpen(false);
-      return;
-    }
     try {
-      const res = commitBlocks(deliverable, sidecarRef.current, fresh, field);
+      const res = commitBlocks(deliverable, sidecarRef.current, addedBlocksRef.current, chosen, field);
+      if (res.addedIds.length === 0) {
+        // Every chosen block was already committed to this exact section — the
+        // commit logic rejected them, not just a UI pre-filter.
+        setAnnounce(
+          `Already added to ${field.label}${chosen.length > 1 ? " — nothing new to add" : ""}.`,
+        );
+        if (opts?.fromSelection) setAddOpen(false);
+        return;
+      }
       setDeliverable(res.deliverable);
       sidecarRef.current = res.sidecar;
-      // Remember which real blocks landed in this section (raw ids aren't tracked
-      // — they're one-off and could collide).
-      const trackedIds = fresh.map((b) => b.id).filter((id) => !id.startsWith("raw:"));
-      if (trackedIds.length > 0) {
-        setAddedBlocks((prev) => {
-          const next = { ...prev };
-          for (const id of trackedIds) next[id] = [...(next[id] ?? []), field.id];
-          return next;
-        });
-      }
+      addedBlocksRef.current = res.registry;
+      setAddedBlocks(res.registry);
       // Pair each new entry with its source block so a later removal frees it.
-      // res.addedIds are in the reply's block order — the same order this sort
-      // reproduces — so index k lines up on both sides.
-      const ord = (id: string) => {
-        const n = Number(id.slice(id.indexOf(":") + 1));
-        return Number.isFinite(n) ? n : -1;
-      };
-      const orderedFresh = [...fresh].sort((a, b) => ord(a.id) - ord(b.id));
-      res.addedIds.forEach((entryId, k) => {
-        const b = orderedFresh[k];
-        if (b && !b.id.startsWith("raw:")) {
-          entryOriginRef.current[entryId] = { blockId: b.id, fieldId: field.id };
-        }
-      });
-      setUndo({
-        record: undoRecordFor(res),
-        label: field.label,
-        count: res.addedIds.length,
-        blockIds: trackedIds,
-        fieldId: field.id,
-      });
+      for (const { entryId, blockId } of res.origins) {
+        entryOriginRef.current[entryId] = { blockId, fieldId: field.id };
+      }
+      setUndo({ record: undoRecordFor(res), label: field.label, count: res.addedIds.length });
       setFlashItems(new Set(res.addedIds));
       setFlashField(field.id);
       setAnnounce(`Added ${res.addedIds.length} to ${field.label}.`);
@@ -558,26 +541,11 @@ export default function Workbench() {
 
   function doUndo() {
     if (!undo) return;
-    const res = undoCommit(deliverable, sidecarRef.current, undo.record);
+    const res = undoCommit(deliverable, sidecarRef.current, addedBlocksRef.current, undo.record);
     setDeliverable(res.deliverable);
     sidecarRef.current = res.sidecar;
-    // Reverse this commit's section membership so the same blocks can be re-added.
-    if (undo.blockIds.length > 0) {
-      const ids = new Set(undo.blockIds);
-      const fieldId = undo.fieldId;
-      setAddedBlocks((prev) => {
-        const next: Record<string, string[]> = {};
-        for (const [bid, fields] of Object.entries(prev)) {
-          if (ids.has(bid)) {
-            const remaining = fields.filter((f) => f !== fieldId);
-            if (remaining.length > 0) next[bid] = remaining;
-          } else {
-            next[bid] = fields;
-          }
-        }
-        return next;
-      });
-    }
+    addedBlocksRef.current = res.registry;
+    setAddedBlocks(res.registry);
     for (const id of undo.record.addedIds) delete entryOriginRef.current[id];
     setUndo(null);
   }
@@ -589,15 +557,14 @@ export default function Workbench() {
     if (!origin) return;
     delete entryOriginRef.current[entryId];
     const { blockId, fieldId } = origin;
-    setAddedBlocks((prev) => {
-      const fields = prev[blockId];
-      if (!fields) return prev;
-      const remaining = fields.filter((f) => f !== fieldId);
-      const next = { ...prev };
-      if (remaining.length > 0) next[blockId] = remaining;
-      else delete next[blockId];
-      return next;
-    });
+    const fields = addedBlocksRef.current[blockId];
+    if (!fields) return;
+    const remaining = fields.filter((f) => f !== fieldId);
+    const next = { ...addedBlocksRef.current };
+    if (remaining.length > 0) next[blockId] = remaining;
+    else delete next[blockId];
+    addedBlocksRef.current = next;
+    setAddedBlocks(next);
   }
 
   // ---- raw-selection precision fallback ----
@@ -697,6 +664,17 @@ export default function Workbench() {
   }, [atCeiling, userTurns]);
 
   const checkedCount = checked.size;
+  // True once every currently checked block is already in that field — lets a
+  // destination control mark/disable itself instead of silently no-opping the
+  // click (SPEC: the commit logic rejects the repeat either way; this is the
+  // UI's honest reflection of that, not the enforcement).
+  function allCheckedAlreadyIn(fieldId: string): boolean {
+    if (checkedCount === 0) return false;
+    for (const id of checked) {
+      if (!(addedBlocks[id] ?? []).includes(fieldId)) return false;
+    }
+    return true;
+  }
 
   return (
     <main className="flex h-screen [height:100dvh] flex-col overflow-hidden">
@@ -1201,16 +1179,34 @@ export default function Workbench() {
                   </button>
                   {addOpen && checkedCount > 0 && (
                     <div className="absolute bottom-full left-0 z-10 mb-1 min-w-[12rem] rounded-sm border border-hairline bg-raised p-1 shadow-layer">
-                      {spec.fields.map((f) => (
-                        <button
-                          key={f.id}
-                          type="button"
-                          onClick={() => commitCheckedTo(f)}
-                          className="block w-full rounded-sm px-2.5 py-2 text-left text-[0.85rem] font-medium text-ink transition-colors hover:bg-accent hover:text-on-accent"
-                        >
-                          {f.label}
-                        </button>
-                      ))}
+                      {spec.fields.map((f) => {
+                        const already = allCheckedAlreadyIn(f.id);
+                        return (
+                          <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => commitCheckedTo(f)}
+                            disabled={already}
+                            aria-disabled={already}
+                            className={`flex w-full items-center justify-between gap-3 rounded-sm px-2.5 py-2 text-left text-[0.85rem] font-medium transition-colors ${
+                              already
+                                ? "cursor-not-allowed text-ink-3"
+                                : "text-ink hover:bg-accent hover:text-on-accent"
+                            }`}
+                          >
+                            <span>{f.label}</span>
+                            {already && (
+                              <span
+                                className="inline-flex flex-none items-center gap-[0.4ch] text-[0.72rem] font-semibold"
+                                style={{ color: "var(--good)" }}
+                              >
+                                <Check width={10} height={8} />
+                                Added
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1227,18 +1223,25 @@ export default function Workbench() {
 
               {/* tablet/mobile: prominent full-width destination controls */}
               <div className="mt-2.5 grid grid-cols-1 gap-1.5 lg:hidden">
-                {spec.fields.map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => commitCheckedTo(f)}
-                    disabled={checkedCount === 0}
-                    className="btn w-full justify-center"
-                    style={{ padding: "0.7em 1em", fontSize: "0.85rem" }}
-                  >
-                    {checkedCount > 0 ? `Add ${checkedCount} to ${f.label}` : `Add to ${f.label}`}
-                  </button>
-                ))}
+                {spec.fields.map((f) => {
+                  const already = allCheckedAlreadyIn(f.id);
+                  return (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => commitCheckedTo(f)}
+                      disabled={checkedCount === 0 || already}
+                      className={`btn w-full justify-center ${already ? "opacity-60" : ""}`}
+                      style={{ padding: "0.7em 1em", fontSize: "0.85rem" }}
+                    >
+                      {already
+                        ? `Already added to ${f.label}`
+                        : checkedCount > 0
+                          ? `Add ${checkedCount} to ${f.label}`
+                          : `Add to ${f.label}`}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1547,7 +1550,7 @@ function ListEditor({
               placeholder={placeholder}
               aria-label={`${label} — item ${i + 1}`}
               data-gramm="false"
-              className="min-h-0 flex-1 border-b border-hairline bg-transparent py-1.5 text-[0.95rem] leading-relaxed text-ink outline-none transition-colors placeholder:text-ink-3 hover:border-ink-3 focus:border-accent"
+              className="min-h-0 flex-1 border-b border-hairline bg-transparent py-1.5 text-[0.95rem] leading-relaxed text-ink transition-colors placeholder:text-ink-3 hover:border-ink-3 focus:border-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1"
             />
             <button
               type="button"
@@ -1652,7 +1655,7 @@ function TableEditor({
                           placeholder={c.placeholder}
                           aria-label={`${c.label}, row ${i + 1}`}
                           data-gramm="false"
-                          className={`min-h-0 w-full bg-transparent py-1 text-[0.92rem] leading-snug text-ink outline-none placeholder:text-ink-3 ${
+                          className={`min-h-0 w-full bg-transparent py-1 text-[0.92rem] leading-snug text-ink placeholder:text-ink-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-1 ${
                             ci === 0 ? "font-semibold" : ""
                           }`}
                           style={{ minWidth: ci === 0 ? "5rem" : "7rem" }}

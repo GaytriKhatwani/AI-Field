@@ -25,6 +25,7 @@ import {
   undoRecordFor,
   type EditableDeliverable,
   type RowSourceSidecar,
+  type AddedBlockRegistry,
 } from "../lib/workbench/transfer";
 import { segment, labelledRowText, type Block } from "../lib/workbench/segment";
 
@@ -599,7 +600,7 @@ const COLS = ["owner", "task", "due"];
     { id: "m:1", kind: "text", text: "second" },
   ];
   const d0 = emptyDeliverable(FIELDS);
-  const res = commitBlocks(d0, {}, blocks, FIELDS[0]);
+  const res = commitBlocks(d0, {}, {}, blocks, FIELDS[0]);
   check(
     "commit: batch appends in reply order regardless of selection order",
     res.deliverable.lists.decisions.map((i) => i.text).join(",") === "first,second,third",
@@ -614,7 +615,7 @@ const COLS = ["owner", "task", "due"];
     lists: { decisions: [newListItem("existing")], questions: [] },
     tables: { actions: [] },
   };
-  const res = commitBlocks(d0, {}, [{ id: "m:0", kind: "text", text: "added" }], FIELDS[0]);
+  const res = commitBlocks(d0, {}, {}, [{ id: "m:0", kind: "text", text: "added" }], FIELDS[0]);
   check(
     "commit: new batch appends after existing content",
     res.deliverable.lists.decisions.map((i) => i.text).join(",") === "existing,added",
@@ -625,10 +626,12 @@ const COLS = ["owner", "task", "due"];
 {
   let d = emptyDeliverable(FIELDS);
   let side: RowSourceSidecar = {};
-  const r1 = commitBlocks(d, side, [{ id: "m:0", kind: "text", text: "A decision" }], FIELDS[0]);
+  let reg: AddedBlockRegistry = {};
+  const r1 = commitBlocks(d, side, reg, [{ id: "m:0", kind: "text", text: "A decision" }], FIELDS[0]);
   d = r1.deliverable;
   side = r1.sidecar;
-  const r2 = commitBlocks(d, side, [{ id: "m:1", kind: "text", text: "A question" }], FIELDS[2]);
+  reg = r1.registry;
+  const r2 = commitBlocks(d, side, reg, [{ id: "m:1", kind: "text", text: "A question" }], FIELDS[2]);
   d = r2.deliverable;
   check(
     "session: successive commits route to different sections",
@@ -640,9 +643,9 @@ const COLS = ["owner", "task", "due"];
 {
   const block: Block = { id: "m:0", kind: "text", text: "Both a decision and a question" };
   let d = emptyDeliverable(FIELDS);
-  const r1 = commitBlocks(d, {}, [block], FIELDS[0]);
+  const r1 = commitBlocks(d, {}, {}, [block], FIELDS[0]);
   d = r1.deliverable;
-  const r2 = commitBlocks(d, r1.sidecar, [block], FIELDS[2]);
+  const r2 = commitBlocks(d, r1.sidecar, r1.registry, [block], FIELDS[2]);
   d = r2.deliverable;
   check(
     "reuse: one block can land in two sections",
@@ -652,6 +655,91 @@ const COLS = ["owner", "task", "due"];
   check(
     "reuse: the two entries have distinct ids",
     d.lists.decisions[0].id !== d.lists.questions[0].id,
+  );
+}
+
+// ---- duplicate guard: the SAME block into the SAME section is rejected -----
+// by commitBlocks itself — not a caller pre-filter (the launch-blocker fix:
+// "Added to Assumptions to verify" was still addable to that same section).
+{
+  const block: Block = { id: "m:9", kind: "text", text: "Verify the Q3 revenue figure" };
+  const first = commitBlocks(emptyDeliverable(FIELDS), {}, {}, [block], FIELDS[0]);
+  check("dup-guard: the first commit succeeds", first.addedIds.length === 1);
+
+  // Re-commit the identical block to the identical field, passing the SAME
+  // block object and the registry the first commit produced — exactly what a
+  // second "Add to Decisions" click on the same reply does.
+  const second = commitBlocks(first.deliverable, first.sidecar, first.registry, [block], FIELDS[0]);
+  check(
+    "dup-guard: a repeat commit to the SAME section adds nothing",
+    second.addedIds.length === 0 && second.skippedBlockIds.join(",") === "m:9",
+  );
+  check(
+    "dup-guard: the deliverable is unchanged by the rejected repeat",
+    second.deliverable.lists.decisions.length === 1,
+  );
+
+  // The same block into a DIFFERENT section must still be allowed.
+  const third = commitBlocks(second.deliverable, second.sidecar, second.registry, [block], FIELDS[2]);
+  check(
+    "dup-guard: the same block can still land in a different section",
+    third.addedIds.length === 1 && third.deliverable.lists.questions.length === 1,
+  );
+
+  // A mixed batch: one fresh block plus one already-added block into the same
+  // section — the fresh one still lands, the duplicate is silently dropped.
+  const other: Block = { id: "m:10", kind: "text", text: "A second, unrelated point" };
+  const mixed = commitBlocks(third.deliverable, third.sidecar, third.registry, [block, other], FIELDS[0]);
+  check(
+    "dup-guard: a mixed batch keeps the fresh block and drops only the duplicate",
+    mixed.addedIds.length === 1 &&
+      mixed.skippedBlockIds.join(",") === "m:9" &&
+      mixed.deliverable.lists.decisions.length === 2,
+  );
+}
+
+// ---- duplicate guard: raw-selection blocks are exempt (no text matching) ---
+{
+  // Two raw-selection commits of literally the same text are two different,
+  // non-tracked synthetic block ids — never deduped by content.
+  const raw1: Block = { id: "raw:1", kind: "text", text: "Same text, pasted twice" };
+  const raw2: Block = { id: "raw:2", kind: "text", text: "Same text, pasted twice" };
+  const r1 = commitBlocks(emptyDeliverable(FIELDS), {}, {}, [raw1], FIELDS[0]);
+  const r2 = commitBlocks(r1.deliverable, r1.sidecar, r1.registry, [raw2], FIELDS[0]);
+  check(
+    "dup-guard: raw-selection blocks are never tracked or deduped by text",
+    r2.addedIds.length === 1 && r2.deliverable.lists.decisions.length === 2,
+  );
+}
+
+// ---- undo reverses the duplicate guard: freed blocks can be re-added -------
+{
+  const block: Block = { id: "m:1", kind: "text", text: "Undo then re-add" };
+  const committed = commitBlocks(emptyDeliverable(FIELDS), {}, {}, [block], FIELDS[0]);
+  const blocked = commitBlocks(
+    committed.deliverable,
+    committed.sidecar,
+    committed.registry,
+    [block],
+    FIELDS[0],
+  );
+  check("undo-precondition: the repeat is blocked before undo", blocked.addedIds.length === 0);
+
+  const undone = undoCommit(
+    committed.deliverable,
+    committed.sidecar,
+    committed.registry,
+    undoRecordFor(committed),
+  );
+  check(
+    "undo: reverses the duplicate-guard registry, not just the deliverable",
+    undone.deliverable.lists.decisions.length === 0 && Object.keys(undone.registry).length === 0,
+  );
+
+  const readded = commitBlocks(undone.deliverable, undone.sidecar, undone.registry, [block], FIELDS[0]);
+  check(
+    "undo: the freed block can be committed to that same section again",
+    readded.addedIds.length === 1 && readded.deliverable.lists.decisions.length === 1,
   );
 }
 
@@ -671,7 +759,7 @@ const COLS = ["owner", "task", "due"];
       source: { headers: ["Owner", "Task", "Due"], cells: ["Sam", "Y", "Mon"] },
     },
   ];
-  const res = commitBlocks(emptyDeliverable(FIELDS), {}, blocks, FIELDS[1]);
+  const res = commitBlocks(emptyDeliverable(FIELDS), {}, {}, blocks, FIELDS[1]);
   check(
     "commit: sidecar records every table-sourced row by its new id",
     res.addedIds.every((id) => res.sidecar[id] !== undefined) &&
@@ -689,7 +777,7 @@ const COLS = ["owner", "task", "due"];
 {
   let d = emptyDeliverable(FIELDS);
   d.lists.decisions = [newListItem("kept before")];
-  const res = commitBlocks(d, {}, [
+  const res = commitBlocks(d, {}, {}, [
     { id: "m:0", kind: "text", text: "batch 1" },
     { id: "m:1", kind: "text", text: "batch 2" },
   ], FIELDS[0]);
@@ -697,7 +785,7 @@ const COLS = ["owner", "task", "due"];
   // Simulate the user reordering the list (moving the pre-existing item to the end).
   const [firstKept, ...rest] = d.lists.decisions;
   d = { ...d, lists: { ...d.lists, decisions: [...rest, firstKept] } };
-  const undone = undoCommit(d, res.sidecar, undoRecordFor(res));
+  const undone = undoCommit(d, res.sidecar, res.registry, undoRecordFor(res));
   check(
     "undo: removes exactly the committed ids after a reorder, leaving prior work",
     undone.deliverable.lists.decisions.length === 1 &&
@@ -708,13 +796,13 @@ const COLS = ["owner", "task", "due"];
 // ---- undo: survives a subsequent unrelated selection/commit elsewhere -------
 {
   let d = emptyDeliverable(FIELDS);
-  const r1 = commitBlocks(d, {}, [{ id: "m:0", kind: "text", text: "target" }], FIELDS[0]);
+  const r1 = commitBlocks(d, {}, {}, [{ id: "m:0", kind: "text", text: "target" }], FIELDS[0]);
   d = r1.deliverable;
   // A later commit to a *different* section happens; the first undo record is
   // still valid because it references ids, not positions.
-  const r2 = commitBlocks(d, r1.sidecar, [{ id: "m:1", kind: "text", text: "other" }], FIELDS[2]);
+  const r2 = commitBlocks(d, r1.sidecar, r1.registry, [{ id: "m:1", kind: "text", text: "other" }], FIELDS[2]);
   d = r2.deliverable;
-  const undone = undoCommit(d, r2.sidecar, undoRecordFor(r1));
+  const undone = undoCommit(d, r2.sidecar, r2.registry, undoRecordFor(r1));
   check(
     "undo: an older record still reverses its own commit after an unrelated one",
     undone.deliverable.lists.decisions.length === 0 &&
@@ -730,9 +818,9 @@ const COLS = ["owner", "task", "due"];
     text: "Owner: Priya · Task: X · Due: Fri",
     source: { headers: ["Owner", "Task", "Due"], cells: ["Priya", "X", "Fri"] },
   };
-  const res = commitBlocks(emptyDeliverable(FIELDS), {}, [block], FIELDS[1]);
+  const res = commitBlocks(emptyDeliverable(FIELDS), {}, {}, [block], FIELDS[1]);
   check("undo-precondition: sidecar has the row", Object.keys(res.sidecar).length === 1);
-  const undone = undoCommit(res.deliverable, res.sidecar, undoRecordFor(res));
+  const undone = undoCommit(res.deliverable, res.sidecar, res.registry, undoRecordFor(res));
   check(
     "undo: removes the row AND its sidecar entry",
     undone.deliverable.tables.actions.length === 0 &&
@@ -742,14 +830,14 @@ const COLS = ["owner", "task", "due"];
 
 // ---- undo: an already-removed entry is skipped, not an error ----------------
 {
-  const res = commitBlocks(emptyDeliverable(FIELDS), {}, [
+  const res = commitBlocks(emptyDeliverable(FIELDS), {}, {}, [
     { id: "m:0", kind: "text", text: "a" },
     { id: "m:1", kind: "text", text: "b" },
   ], FIELDS[0]);
   // User manually removes one of the two before undoing.
   let d = res.deliverable;
   d = { ...d, lists: { ...d.lists, decisions: d.lists.decisions.slice(0, 1) } };
-  const undone = undoCommit(d, res.sidecar, undoRecordFor(res));
+  const undone = undoCommit(d, res.sidecar, res.registry, undoRecordFor(res));
   check(
     "undo: tolerates an entry the user already removed",
     undone.deliverable.lists.decisions.length === 0,
@@ -793,14 +881,16 @@ function field(missionId: string, fieldId: string): DeliverableField {
 
   let d = emptyDeliverable(getMission("meeting-chaos")!.deliverable.fields);
   let side: RowSourceSidecar = {};
+  let reg: AddedBlockRegistry = {};
   for (const [batch, fid] of [
     [decisions, "decisions"],
     [actions, "actions"],
     [questions, "questions"],
   ] as const) {
-    const res = commitBlocks(d, side, batch, field("meeting-chaos", fid));
+    const res = commitBlocks(d, side, reg, batch, field("meeting-chaos", fid));
     d = res.deliverable;
     side = res.sidecar;
+    reg = res.registry;
   }
 
   check(
@@ -857,10 +947,12 @@ function field(missionId: string, fieldId: string): DeliverableField {
 
   let d = emptyDeliverable(getMission("the-bad-prompt")!.deliverable.fields);
   let side: RowSourceSidecar = {};
-  let res = commitBlocks(d, side, subjects, field("the-bad-prompt", "subject"));
+  let reg: AddedBlockRegistry = {};
+  let res = commitBlocks(d, side, reg, subjects, field("the-bad-prompt", "subject"));
   d = res.deliverable;
   side = res.sidecar;
-  res = commitBlocks(d, side, bodyParas, field("the-bad-prompt", "body"));
+  reg = res.registry;
+  res = commitBlocks(d, side, reg, bodyParas, field("the-bad-prompt", "body"));
   d = res.deliverable;
 
   check("the-bad-prompt: two subject options captured", d.lists.subject.length === 2);
@@ -883,6 +975,7 @@ function field(missionId: string, fieldId: string): DeliverableField {
   const b = segment("br1", reply);
   const res = commitBlocks(
     emptyDeliverable(getMission("the-brief")!.deliverable.fields),
+    {},
     {},
     b,
     field("the-brief", "compare"),
@@ -915,10 +1008,12 @@ function field(missionId: string, fieldId: string): DeliverableField {
 
   let d = emptyDeliverable(getMission("dont-trust-the-ai")!.deliverable.fields);
   let side: RowSourceSidecar = {};
-  let res = commitBlocks(d, side, verified, field("dont-trust-the-ai", "summary"));
+  let reg: AddedBlockRegistry = {};
+  let res = commitBlocks(d, side, reg, verified, field("dont-trust-the-ai", "summary"));
   d = res.deliverable;
   side = res.sidecar;
-  res = commitBlocks(d, side, invented, field("dont-trust-the-ai", "caught"));
+  reg = res.registry;
+  res = commitBlocks(d, side, reg, invented, field("dont-trust-the-ai", "caught"));
   d = res.deliverable;
 
   check(

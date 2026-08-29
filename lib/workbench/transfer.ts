@@ -272,13 +272,43 @@ export function mapBlockToField(block: Block, field: DeliverableField): MappedEn
   return { kind: "table", row, source: sourceFor(block, row.id) };
 }
 
+// ---- duplicate-commit guard -------------------------------------------------
+//
+// Which (source block, destination field) pairs have already been committed —
+// keyed by the block's own stable id (`${messageId}:${index}`, minted once at
+// segmentation time), never by its text. Enforced HERE, inside commitBlocks
+// itself, so a block can't land in the same section twice regardless of what
+// pre-filtering (or lack of it) the caller does — a UI-only pre-filter is a
+// hint, not a guarantee (it can be raced by two rapid calls sharing one stale
+// snapshot). The same block committed to a *different* field is unaffected —
+// this only blocks a repeat into the exact section it's already in. Never
+// persisted, so it needs no legacy-draft migration; raw-selection blocks
+// (`raw:` ids, minted fresh per use, no stable identity across renders) are
+// exempt and always fresh — deduping them would require text matching, which
+// this deliberately does not do.
+export type AddedBlockRegistry = Record<string, string[]>; // blockId -> field ids already holding it
+
+function isTrackedBlock(blockId: string): boolean {
+  return !blockId.startsWith("raw:");
+}
+
+export function alreadyAdded(
+  registry: AddedBlockRegistry,
+  blockId: string,
+  fieldId: string,
+): boolean {
+  return (registry[blockId] ?? []).includes(fieldId);
+}
+
 // ---- atomic commit + shallow Undo (T3/T4 pure core) ------------------------
 //
 // Commit maps every selected block and appends the batch to one section in the
 // reply's original order (never the user's selection order), returning fresh
-// deliverable + sidecar objects — all-or-nothing by construction. Repeated
-// commits build a persistent multi-section session; the same block committed
-// twice mints two independent entries, so one point can live in two sections.
+// deliverable + sidecar objects — all-or-nothing by construction over the
+// blocks that pass the duplicate guard above. Repeated commits build a
+// persistent multi-section session; the same block committed to two different
+// fields mints two independent entries, so one point can live in two sections
+// — only a repeat into the *same* field is rejected.
 
 // Original position of a block within its reply, from `${messageId}:${index}`.
 // Synthetic raw-selection blocks (no numeric index) sort to the front as one.
@@ -290,7 +320,10 @@ function blockOrder(id: string): number {
 export type CommitResult = {
   deliverable: EditableDeliverable;
   sidecar: RowSourceSidecar;
+  registry: AddedBlockRegistry; // updated duplicate-guard membership
   addedIds: string[]; // the new entries, for Undo and new-item emphasis
+  skippedBlockIds: string[]; // requested blocks already in this field — silently dropped
+  origins: { entryId: string; blockId: string }[]; // new-entry id -> its source block id (tracked only)
   fieldId: string;
   kind: "list" | "table";
 };
@@ -298,69 +331,130 @@ export type CommitResult = {
 export function commitBlocks(
   d: EditableDeliverable,
   sidecar: RowSourceSidecar,
+  registry: AddedBlockRegistry,
   blocks: Block[],
   field: DeliverableField,
 ): CommitResult {
   const ordered = [...blocks].sort((a, b) => blockOrder(a.id) - blockOrder(b.id));
-  const mapped = ordered.map((b) => mapBlockToField(b, field));
+  // The guard itself: drop any tracked block already committed to THIS field.
+  const fresh = ordered.filter(
+    (b) => !isTrackedBlock(b.id) || !alreadyAdded(registry, b.id, field.id),
+  );
+  const skippedBlockIds = ordered.filter((b) => !fresh.includes(b)).map((b) => b.id);
+
+  const mapped = fresh.map((b) => mapBlockToField(b, field));
   const nextSidecar: RowSourceSidecar = { ...sidecar };
+  const nextRegistry: AddedBlockRegistry = { ...registry };
+  for (const b of fresh) {
+    if (!isTrackedBlock(b.id)) continue;
+    nextRegistry[b.id] = [...(nextRegistry[b.id] ?? []), field.id];
+  }
 
   if (field.kind === "list") {
     const items: EditableListItem[] = [];
-    for (const m of mapped) {
+    const origins: { entryId: string; blockId: string }[] = [];
+    for (let i = 0; i < mapped.length; i++) {
+      const m = mapped[i];
       if (m.kind !== "list") continue; // unreachable: field.kind pins the shape
       items.push(m.item);
       if (m.source) nextSidecar[m.item.id] = m.source;
+      const b = fresh[i];
+      if (isTrackedBlock(b.id)) origins.push({ entryId: m.item.id, blockId: b.id });
     }
     const nextList = [...(d.lists[field.id] ?? []), ...items];
     return {
       deliverable: { ...d, lists: { ...d.lists, [field.id]: nextList } },
       sidecar: nextSidecar,
+      registry: nextRegistry,
       addedIds: items.map((i) => i.id),
+      skippedBlockIds,
+      origins,
       fieldId: field.id,
       kind: "list",
     };
   }
 
   const rows: EditableTableRow[] = [];
-  for (const m of mapped) {
+  const origins: { entryId: string; blockId: string }[] = [];
+  for (let i = 0; i < mapped.length; i++) {
+    const m = mapped[i];
     if (m.kind !== "table") continue; // unreachable: field.kind pins the shape
     rows.push(m.row);
     if (m.source) nextSidecar[m.row.id] = m.source;
+    const b = fresh[i];
+    if (isTrackedBlock(b.id)) origins.push({ entryId: m.row.id, blockId: b.id });
   }
   const nextTable = [...(d.tables[field.id] ?? []), ...rows];
   return {
     deliverable: { ...d, tables: { ...d.tables, [field.id]: nextTable } },
     sidecar: nextSidecar,
+    registry: nextRegistry,
     addedIds: rows.map((r) => r.id),
+    skippedBlockIds,
+    origins,
     fieldId: field.id,
     kind: "table",
   };
 }
 
 // What a shallow Undo needs to reverse exactly one commit — by id, never by
-// position or content, so it survives edits and reorders elsewhere.
-export type UndoRecord = { fieldId: string; kind: "list" | "table"; addedIds: string[] };
+// position or content, so it survives edits and reorders elsewhere. blockIds
+// are the tracked source blocks this commit registered against fieldId, so
+// Undo can free them for that field again (a block can always be re-added to
+// a *different* field regardless — this only reverses the one just undone).
+export type UndoRecord = {
+  fieldId: string;
+  kind: "list" | "table";
+  addedIds: string[];
+  blockIds: string[];
+};
 
 export function undoRecordFor(r: CommitResult): UndoRecord {
-  return { fieldId: r.fieldId, kind: r.kind, addedIds: r.addedIds };
+  return {
+    fieldId: r.fieldId,
+    kind: r.kind,
+    addedIds: r.addedIds,
+    blockIds: r.origins.map((o) => o.blockId),
+  };
 }
 
-// Remove exactly the entries a commit added (by id) and forget their sidecar
-// records. Entries already gone (e.g. the user removed one) are simply skipped.
+// Remove exactly the entries a commit added (by id), forget their sidecar
+// records, and free the blocks it registered against fieldId so the same
+// block can be committed to that field again. Entries already gone (e.g. the
+// user removed one by hand) are simply skipped.
 export function undoCommit(
   d: EditableDeliverable,
   sidecar: RowSourceSidecar,
+  registry: AddedBlockRegistry,
   rec: UndoRecord,
-): { deliverable: EditableDeliverable; sidecar: RowSourceSidecar } {
+): { deliverable: EditableDeliverable; sidecar: RowSourceSidecar; registry: AddedBlockRegistry } {
   const removed = new Set(rec.addedIds);
   const nextSidecar: RowSourceSidecar = { ...sidecar };
   for (const id of rec.addedIds) delete nextSidecar[id];
 
+  const freed = new Set(rec.blockIds);
+  const nextRegistry: AddedBlockRegistry = {};
+  for (const [blockId, fieldIds] of Object.entries(registry)) {
+    if (!freed.has(blockId)) {
+      nextRegistry[blockId] = fieldIds;
+      continue;
+    }
+    const remaining = fieldIds.filter((f) => f !== rec.fieldId);
+    if (remaining.length > 0) nextRegistry[blockId] = remaining;
+  }
+
   if (rec.kind === "list") {
     const arr = (d.lists[rec.fieldId] ?? []).filter((i) => !removed.has(i.id));
-    return { deliverable: { ...d, lists: { ...d.lists, [rec.fieldId]: arr } }, sidecar: nextSidecar };
+    return {
+      deliverable: { ...d, lists: { ...d.lists, [rec.fieldId]: arr } },
+      sidecar: nextSidecar,
+      registry: nextRegistry,
+    };
   }
   const arr = (d.tables[rec.fieldId] ?? []).filter((r) => !removed.has(r.id));
-  return { deliverable: { ...d, tables: { ...d.tables, [rec.fieldId]: arr } }, sidecar: nextSidecar };
+  return {
+    deliverable: { ...d, tables: { ...d.tables, [rec.fieldId]: arr } },
+    sidecar: nextSidecar,
+    registry: nextRegistry,
+  };
 }
