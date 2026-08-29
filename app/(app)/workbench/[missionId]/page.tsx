@@ -714,21 +714,23 @@ export default function Workbench() {
           <Back />
         </button>
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:gap-3">
+          <div className="flex min-w-0 flex-col lg:flex-row lg:items-baseline lg:gap-3">
             <h1 className="heading m-0 whitespace-nowrap text-[1.05rem] text-ink">
               {mission.title}
             </h1>
-            {/* task description is redundant on a small screen — hide it there */}
+            {/* task description is redundant across the whole tabbed range (mobile
+                and tablet) — only the two-pane desktop layout has room for it */}
             <span
               title={mission.briefing.objective}
-              className="hidden truncate text-[0.85rem] text-ink-2 sm:block"
+              className="hidden truncate text-[0.85rem] text-ink-2 lg:block"
             >
               {mission.briefing.objective}
             </span>
           </div>
         </div>
-        {/* theme control relocated off the mobile header to keep it to back/title/Finish */}
-        <span className="hidden sm:inline-flex">
+        {/* theme control relocated off the header for the whole tabbed range (mobile
+            and tablet) to keep it to back/title/Finish */}
+        <span className="hidden lg:inline-flex">
           <ThemeToggle />
         </span>
         <button
@@ -1304,7 +1306,8 @@ export default function Workbench() {
             {(saveState === "saving" || saveState === "saved") && (
               <span
                 className="flex-none text-[0.78rem] font-medium text-ink-2"
-                title="Saved on this device only"
+                title={saveState === "saving" ? "Saving…" : "Saved on this device only"}
+                aria-label={saveState === "saving" ? "Saving…" : "Saved on this device."}
                 aria-live="polite"
               >
                 {saveState === "saving" ? "Saving…" : "Saved on this device"}
@@ -1531,7 +1534,7 @@ function ListEditor({
         return (
           <div
             key={item.id}
-            className={`flex items-start gap-1 rounded-sm transition-colors ${
+            className={`flex items-start gap-1 rounded-sm transition-colors has-[:focus]:bg-[color-mix(in_oklab,var(--accent)_6%,transparent)] ${
               isNew
                 ? "border-l-2 border-accent pl-2 bg-[color-mix(in_oklab,var(--accent)_7%,transparent)]"
                 : "border-l-2 border-transparent pl-2"
@@ -1636,7 +1639,7 @@ function TableEditor({
                     {columns.map((c, ci) => (
                       <td
                         key={c.id}
-                        className="border-b border-hairline py-1 pr-3"
+                        className="border-b border-hairline py-1 pr-3 transition-colors hover:border-ink-3 has-[:focus]:border-accent has-[:focus]:bg-[color-mix(in_oklab,var(--accent)_6%,transparent)]"
                         style={
                           isNew && ci === 0
                             ? { boxShadow: "inset 2px 0 0 var(--accent)" }
@@ -1649,7 +1652,7 @@ function TableEditor({
                           placeholder={c.placeholder}
                           aria-label={`${c.label}, row ${i + 1}`}
                           data-gramm="false"
-                          className={`min-h-0 w-full border-b border-transparent bg-transparent py-1 text-[0.92rem] leading-snug text-ink outline-none transition-colors placeholder:text-ink-3 hover:border-hairline focus:border-accent ${
+                          className={`min-h-0 w-full bg-transparent py-1 text-[0.92rem] leading-snug text-ink outline-none placeholder:text-ink-3 ${
                             ci === 0 ? "font-semibold" : ""
                           }`}
                           style={{ minWidth: ci === 0 ? "5rem" : "7rem" }}

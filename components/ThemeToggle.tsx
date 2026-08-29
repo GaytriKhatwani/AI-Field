@@ -10,7 +10,7 @@ import { Sun, Moon } from "@/components/icons";
 type Theme = "light" | "dark";
 const KEY = "aifield.theme";
 
-export function ThemeToggle() {
+export function ThemeToggle({ className }: { className?: string }) {
   // null until mounted: the server didn't render a theme, so we read the value the
   // pre-paint script already set on <html> and avoid a hydration mismatch.
   const [theme, setTheme] = useState<Theme | null>(null);
@@ -38,7 +38,7 @@ export function ThemeToggle() {
       onClick={toggle}
       aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
       title={isDark ? "Light theme" : "Dark theme"}
-      className="inline-flex h-8 w-8 flex-none items-center justify-center rounded-sm text-ink-3 transition-colors hover:text-accent"
+      className={`inline-flex h-8 w-8 flex-none items-center justify-center rounded-sm transition-colors hover:text-accent ${className ?? "text-ink-3"}`}
     >
       {/* Show the destination: a sun in dark mode (→ light), a moon in light mode
           (→ dark). Empty until mounted so the icon never flips on hydration. */}

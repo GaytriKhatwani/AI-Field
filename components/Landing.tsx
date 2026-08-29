@@ -60,7 +60,7 @@ export function Landing() {
         {starting ? "Starting…" : "Try your first scenario"}
         {!starting && <Arrow className="arr" />}
       </button>
-      <span className="meta">No signup · about 10 minutes</span>
+      <span className="meta text-ink-2">No signup · about 10 minutes</span>
     </div>
   );
 
@@ -83,11 +83,11 @@ export function Landing() {
             </span>
             <div className="flex items-center gap-4">
               {ACCOUNT_LINKING_ENABLED && (
-                <button type="button" onClick={signIn} className="btn--quiet">
+                <button type="button" onClick={signIn} className="btn--quiet text-ink-2">
                   Sign in
                 </button>
               )}
-              <ThemeToggle />
+              <ThemeToggle className="text-ink-2" />
             </div>
           </header>
 
@@ -161,7 +161,7 @@ export function Landing() {
                 {starting ? "Starting…" : "Try your first scenario"}
                 {!starting && <Arrow className="arr" />}
               </button>
-              <span className="meta">No signup · about 10 minutes</span>
+              <span className="meta text-ink-2">No signup · about 10 minutes</span>
             </div>
             {error && (
               <p role="alert" className="mt-3 max-w-measure text-[0.9rem] text-warn">
@@ -185,12 +185,12 @@ function ProductScene() {
     <div className="relative w-full" aria-hidden>
       {/* 1 — the assignment: real raw notes, dim, cropped by a bottom fade */}
       <figure className="relative z-10 animate-fadeUp" style={{ animationDelay: "80ms" }}>
-        <figcaption className="meta mb-2 flex items-center gap-2 text-ink-3">
+        <figcaption className="meta mb-2 flex items-center gap-2 text-ink-2">
           <span aria-hidden className="inline-block h-px w-5 bg-hairline" />
           Raw meeting notes
         </figcaption>
         <pre
-          className="max-h-[8rem] overflow-hidden whitespace-pre-wrap font-mono text-[0.68rem] leading-[1.55] text-ink-3"
+          className="max-h-[5.5rem] overflow-hidden whitespace-pre-wrap font-mono text-[0.68rem] leading-[1.55] text-ink-2 md:max-h-[8rem]"
           style={{
             maskImage: "linear-gradient(to bottom, #000 44%, transparent)",
             WebkitMaskImage: "linear-gradient(to bottom, #000 44%, transparent)",
@@ -213,7 +213,7 @@ present: Priya (PM), Marcus (eng), Dana (design), Sam (marketing), + Leo joined 
         className="relative z-20 mt-6 ml-8 hidden animate-fadeUp sm:ml-14 md:block"
         style={{ animationDelay: "220ms" }}
       >
-        <p className="meta mb-2.5 flex items-center gap-2 text-ink-3">
+        <p className="meta mb-2.5 flex items-center gap-2 text-ink-2">
           <span aria-hidden className="inline-block h-px w-5 bg-hairline" />
           You work with the AI
         </p>
@@ -224,7 +224,7 @@ present: Priya (PM), Marcus (eng), Dana (design), Sam (marketing), + Leo joined 
             and flag anything the notes don&rsquo;t actually say.
           </p>
           <p className="text-[0.86rem] leading-snug text-ink-2">
-            <span className="meta mr-2 align-middle">AI</span>
+            <span className="meta mr-2 align-middle text-ink-2">AI</span>
             Summary from the notes only. Launch date: &ldquo;target Sept 15&rdquo;,
             not committed…
           </p>
@@ -233,16 +233,16 @@ present: Priya (PM), Marcus (eng), Dana (design), Sam (marketing), + Leo joined 
 
       {/* 3 — the read: the payoff, forward and in focus */}
       <div
-        className="relative z-30 mt-7 max-w-[29rem] animate-riseIn rounded-sm border border-hairline bg-raised px-[clamp(1.15rem,2.2vw,1.75rem)] py-[clamp(1.25rem,2.2vw,1.6rem)] shadow-layer md:ml-16 lg:ml-28"
+        className="relative z-30 mt-7 max-w-[29rem] animate-riseIn rounded-sm border border-hairline bg-raised px-4 py-4 shadow-layer md:ml-16 md:px-[clamp(1.15rem,2.2vw,1.75rem)] md:py-[clamp(1.25rem,2.2vw,1.6rem)] lg:ml-28"
         style={{ animationDelay: "360ms" }}
       >
-        <p className="meta mb-5 flex items-baseline justify-between gap-4">
+        <p className="meta mb-3 flex items-baseline justify-between gap-4 md:mb-5">
           <span>Your review</span>
           <span className="text-ink-3" style={{ letterSpacing: "0.14em" }}>
             example
           </span>
         </p>
-        <dl className="m-0 space-y-4">
+        <dl className="m-0 space-y-3 md:space-y-4">
           <div>
             <dt className="section-label mb-1.5" style={{ color: "var(--accent)" }}>
               What worked
@@ -261,7 +261,7 @@ present: Priya (PM), Marcus (eng), Dana (design), Sam (marketing), + Leo joined 
               commitment made it into the summary.
             </dd>
           </div>
-          <div>
+          <div className="hidden md:block">
             <dt className="section-label mb-1.5">What to practise next</dt>
             <dd className="m-0 text-[0.96rem] leading-relaxed text-ink">
               Checking the AI&rsquo;s work before you rely on it.
@@ -291,12 +291,18 @@ function StepFlow() {
       {STEPS.map((step, i) => (
         <li key={step} className="relative flex items-baseline gap-3.5 pb-3.5 last:pb-0">
           {i < STEPS.length - 1 && (
-            <span aria-hidden className="absolute left-[3px] top-[0.9em] h-full w-px bg-hairline" />
+            <span
+              aria-hidden
+              className="absolute left-[0.8em] top-[1.3em] h-full w-px bg-hairline"
+            />
           )}
           <span
             aria-hidden
-            className="relative z-10 mt-[0.45em] h-[7px] w-[7px] flex-none rounded-full bg-ink-3"
-          />
+            className="num relative z-10 flex-none text-[0.78rem] font-semibold text-ink-3"
+            style={{ minWidth: "1.6em" }}
+          >
+            {String(i + 1).padStart(2, "0")}
+          </span>
           <span className="text-[0.98rem] font-medium leading-snug text-ink">{step}</span>
         </li>
       ))}
