@@ -15,7 +15,7 @@ import {
   practicePitch,
 } from "@/lib/competencies";
 import { CapabilityRegister } from "@/components/CapabilityRegister";
-import { ACCOUNT_LINKING_ENABLED } from "@/lib/flags";
+import { ACCOUNT_LINKING_ENABLED, IS_DEV } from "@/lib/flags";
 import { Arrow, Chevron } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -145,6 +145,9 @@ export default function Field() {
             />
           </button>
           <ThemeToggle />
+          {/* Sign out: signed-in users always; anonymous sessions only in dev
+              (a local testing aid to reach the logged-out landing). */}
+          {(!isAnonymous || IS_DEV) && <SignOutControl isAnonymous={isAnonymous} />}
         </div>
       </header>
 
@@ -339,6 +342,86 @@ function topCompetencies(
   weights: Record<Competency, number>,
 ): Competency[] {
   return COMPETENCY_ORDER.filter((c) => weights[c] >= 0.9);
+}
+
+// Sign out of the current session and return to the public landing. For an
+// anonymous user this clears the per-browser session, so the progress held only
+// in this browser becomes unreachable — hence the data-loss confirm before it
+// runs. resetAll() (the store) does the actual signOut + analytics/state reset;
+// a full navigation to "/" then re-renders the server-gated Landing with the
+// cleared cookie. Primary use today is testing the logged-out flow locally.
+function SignOutControl({ isAnonymous }: { isAnonymous: boolean }) {
+  const { resetAll } = useField();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!confirming) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setConfirming(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirming]);
+
+  async function signOut() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await resetAll();
+    } catch {
+      /* resetAll swallows its own errors; proceed to the landing regardless */
+    }
+    // Full load so the server re-evaluates auth (now cleared) and serves Landing.
+    window.location.assign("/");
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        aria-expanded={confirming}
+        aria-haspopup="true"
+        onClick={() => setConfirming((v) => !v)}
+        className="text-[0.82rem] font-medium text-ink-3 transition-colors hover:text-accent"
+      >
+        Sign out
+      </button>
+      {confirming && (
+        <div
+          role="dialog"
+          aria-label="Confirm sign out"
+          className="absolute right-0 top-full z-20 mt-2 w-[17rem] animate-fadeUp rounded-sm border border-hairline bg-raised p-3.5 text-left shadow-layer"
+        >
+          <p className="text-[0.88rem] font-semibold text-ink">Sign out of this browser?</p>
+          <p className="mt-1 text-[0.8rem] leading-snug text-ink-3">
+            {isAnonymous
+              ? "Your progress is saved only in this browser and hasn't been linked to an account — signing out clears it."
+              : "You can sign back in anytime to pick up where you left off."}
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={signOut}
+              disabled={busy}
+              className="btn"
+              style={{ padding: "0.5em 1em", fontSize: "0.82rem" }}
+            >
+              {busy ? "Signing out…" : "Sign out"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              disabled={busy}
+              className="btn--quiet"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Quiet note when the Google account-linking round-trip came back a failure

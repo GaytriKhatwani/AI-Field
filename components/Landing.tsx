@@ -120,56 +120,28 @@ export function Landing() {
 
       {/* Below the hero the page returns to an editorial reading width. */}
       <div className="mx-auto max-w-reading px-[clamp(1.25rem,5vw,3.25rem)]">
-        {/* WHY IT MATTERS — the case for practising the process, not prompts */}
-        <section aria-label="Why it matters" className="max-w-measure pt-[clamp(3rem,7vw,5rem)]">
+        {/* HOW IT WORKS — the differentiator hook, proved by the five-step loop,
+            then one payoff beat. The hero already carries the review card, so the
+            page never re-shows it here. */}
+        <section aria-label="How it works" className="pt-[clamp(3rem,7vw,5rem)]">
           <h2
-            className="heading text-ink"
+            className="heading max-w-measure text-ink"
             style={{ fontSize: "clamp(1.5rem,3.6vw,2.05rem)", lineHeight: 1.12 }}
           >
             Good AI work is more than writing a prompt.
           </h2>
-          <p className="mt-4 text-[1.05rem] leading-relaxed text-ink-2">
-            You need to choose the right context, give clear direction, question
-            the output, improve it, and turn it into something useful.
-          </p>
-        </section>
-
-        <hr className="rule my-[clamp(2.75rem,7vw,4.5rem)]" />
-
-        {/* WHAT YOU'LL DO — the real loop, previewed in the hero fragment */}
-        <section aria-label="What you'll do" className="max-w-measure">
-          <h2
-            className="heading text-ink"
-            style={{ fontSize: "clamp(1.5rem,3.6vw,2.05rem)", lineHeight: 1.12 }}
-          >
-            Work through a realistic situation.
-          </h2>
-          <p className="mt-4 text-[1.05rem] leading-relaxed text-ink-2">
-            You&rsquo;ll get a brief, source materials, an AI to work with, and a
-            deliverable to produce. What you do with them is up to you.
-          </p>
-          <p className="meta mt-5">
-            Brief → choose materials → work with the AI → build your deliverable →
-            your review
-          </p>
-        </section>
-
-        <hr className="rule my-[clamp(2.75rem,7vw,4.5rem)]" />
-
-        {/* WHAT YOU GET — the payoff is the evidence-backed review, not a dashboard */}
-        <section aria-label="What you get">
-          <h2
-            className="heading text-ink"
-            style={{ fontSize: "clamp(1.5rem,3.6vw,2.05rem)", lineHeight: 1.12 }}
-          >
-            See how you worked — not just what the AI produced.
-          </h2>
           <p className="mt-4 max-w-measure text-[1.05rem] leading-relaxed text-ink-2">
-            Your review highlights what you handled well, what you missed, and
-            what to practise next.
+            Practise a realistic work situation from start to finish, not just the
+            prompt.
           </p>
 
-          <ExampleRead />
+          <StepFlow />
+
+          <hr className="rule my-[clamp(2rem,5vw,3rem)]" />
+
+          <p className="max-w-measure text-[1.05rem] font-medium leading-snug text-ink">
+            See what you handled well&mdash;and what to practise next.
+          </p>
         </section>
 
         <hr className="rule my-[clamp(2.75rem,7vw,4.5rem)]" />
@@ -284,53 +256,47 @@ present: Priya (PM), Marcus (eng), Dana (design), Sam (marketing), + Leo joined 
   );
 }
 
-// A static, illustrative example of the debrief read — the section's supporting
-// visual. It mirrors the real debrief's section labels and evidence-anchored
-// tone (NOT a profile dashboard); the cumulative capability record is a single
-// quiet line beneath it. Plainly labelled "example" so it's never mistaken for
-// the visitor's own data.
-function ExampleRead() {
+// The five-step loop as a compact visual sequence — the proof under the "more
+// than a prompt" hook. A semantic <ol> (a screen reader reads it as an ordered
+// list); the arrows between steps are decorative. Desktop lays the steps in a
+// wrapping row joined by → glyphs; narrow screens stack them vertically along a
+// single connecting hairline so the sequence never crushes horizontally.
+const STEPS = [
+  "Get a brief",
+  "Choose materials",
+  "Work with AI",
+  "Build your deliverable",
+  "Get your review",
+];
+
+function StepFlow() {
   return (
-    <div className="mt-7 max-w-measure animate-fadeUp rounded-sm border border-hairline bg-raised px-[clamp(1.1rem,3vw,1.75rem)] py-[clamp(1.3rem,3vw,1.75rem)]">
-      <p className="meta mb-6 flex items-baseline justify-between gap-4">
-        <span>Your review</span>
-        <span className="text-ink-3" style={{ letterSpacing: "0.14em" }}>
-          example
-        </span>
-      </p>
-
-      <dl className="m-0 space-y-5">
-        <div>
-          <dt className="section-label mb-1.5" style={{ color: "var(--accent)" }}>
-            What worked
-          </dt>
-          <dd className="m-0 text-[0.98rem] leading-relaxed text-ink">
-            You gave the AI the meeting notes up front, so it worked from real
-            details instead of guessing.
-          </dd>
-        </div>
-        <div>
-          <dt className="section-label mb-1.5" style={{ color: "var(--warn)" }}>
-            What you missed
-          </dt>
-          <dd className="m-0 text-[0.98rem] leading-relaxed text-ink">
-            You used the AI&rsquo;s first summary as final — it had invented two
-            action items no one agreed to.
-          </dd>
-        </div>
-        <div>
-          <dt className="section-label mb-1.5">What to practice next</dt>
-          <dd className="m-0 text-[0.98rem] leading-relaxed text-ink">
-            Checking the AI&rsquo;s work before you rely on it.
-          </dd>
-        </div>
-      </dl>
-
-      <hr className="rule my-5" />
-      <p className="m-0 text-[0.88rem] leading-relaxed text-ink-3">
-        Every scenario quietly builds your Field Profile — across the five
-        capabilities of strong AI work.
-      </p>
-    </div>
+    <ol
+      aria-label="How a scenario works, step by step"
+      className="mt-7 m-0 flex max-w-reading list-none flex-col gap-0 p-0 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-1 sm:gap-y-3"
+    >
+      {STEPS.map((step, i) => (
+        <li
+          key={step}
+          className="flex items-center gap-3 border-l border-hairline pb-4 pl-4 last:pb-0 sm:border-l-0 sm:gap-0 sm:pb-0 sm:pl-0"
+        >
+          {/* mobile: a node on the connecting rail. desktop: the arrow before
+              every step but the first carries the flow instead. */}
+          <span
+            aria-hidden
+            className="-ml-[calc(1rem+3px)] h-[6px] w-[6px] flex-none rounded-full bg-ink-3 sm:hidden"
+          />
+          {i > 0 && (
+            <span
+              aria-hidden
+              className="hidden px-2 text-ink-3 sm:inline"
+            >
+              →
+            </span>
+          )}
+          <span className="text-[0.95rem] font-medium text-ink">{step}</span>
+        </li>
+      ))}
+    </ol>
   );
 }

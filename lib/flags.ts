@@ -9,3 +9,9 @@
 // only once the Google setup is verified — set NEXT_PUBLIC_ENABLE_ACCOUNT_LINKING=true.
 export const ACCOUNT_LINKING_ENABLED =
   process.env.NEXT_PUBLIC_ENABLE_ACCOUNT_LINKING === "true";
+
+// Development-only affordances. Next inlines NODE_ENV: "development" under
+// `next dev`, "production" for `next build`/`next start` and Vercel deploys.
+// Used to expose testing conveniences (e.g. signing an anonymous session out to
+// reach the logged-out landing) only locally — never in production.
+export const IS_DEV = process.env.NODE_ENV !== "production";
