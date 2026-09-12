@@ -47,7 +47,7 @@ export const meetingChaos: Mission = {
       "Produce a clean summary: the decisions that were actually made, action items with an owner and a due date, and the questions left open.",
     constraints: [
       "Include only what the notes support — do not invent tasks, owners, or dates.",
-      "Every action item needs a named owner and a due date.",
+      "Every action item needs a named owner, and a due date where the notes give one — say plainly when they don't.",
       "Where the notes are ambiguous, surface it as an open question rather than guessing.",
     ],
     deliverableDescription: "a structured meeting summary",

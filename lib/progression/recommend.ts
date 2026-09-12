@@ -21,9 +21,12 @@ export function recommendNext(
 ): string {
   const emphasis = (m: Mission) => m.competencyWeights[practice] ?? 0;
 
+  // Missions the Field marks "later" are only recommended when nothing else is
+  // left — otherwise the debrief would push a mission the Field says to hold.
+  const later = (m: Mission) => (m.availability === "later" ? 1 : 0);
   const fresh = missions
     .filter((m) => !completedIds.includes(m.id))
-    .sort((a, b) => emphasis(b) - emphasis(a));
+    .sort((a, b) => later(a) - later(b) || emphasis(b) - emphasis(a));
 
   if (fresh.length > 0) return fresh[0].id;
 

@@ -85,6 +85,21 @@ export default function Onboarding() {
     }
   }, [hydrated, userId]);
 
+  // After a step change the question block remounts (key={i}) and focus drops
+  // to <body>; move it to the first option so keyboard users continue in place.
+  // Skipped on the initial mount so the page doesn't grab focus on load.
+  const optionsRef = useRef<HTMLUListElement>(null);
+  const mountedStep = useRef<number | null>(null);
+  useEffect(() => {
+    if (mountedStep.current === null) {
+      mountedStep.current = i;
+      return;
+    }
+    if (mountedStep.current === i) return;
+    mountedStep.current = i;
+    optionsRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+  }, [i]);
+
   function choose(value: string) {
     const next = { ...picks, [step.key]: value };
     setPicks(next);
@@ -163,6 +178,7 @@ export default function Onboarding() {
           )}
 
           <ul
+            ref={optionsRef}
             role="group"
             aria-label={step.prompt}
             className="mt-9 max-w-[34rem] list-none p-0"

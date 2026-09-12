@@ -178,7 +178,7 @@ export default function Field() {
                     </span>
                     <span
                       aria-hidden
-                      className="ml-auto self-center text-ink-3 opacity-0 transition-opacity group-hover:opacity-100"
+                      className="ml-auto self-center text-ink-3 transition-colors group-hover:text-accent"
                     >
                       Review ›
                     </span>

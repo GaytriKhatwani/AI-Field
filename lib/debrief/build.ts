@@ -47,6 +47,10 @@ function truncate(s: string, n = 150): string {
   const t = s.trim();
   if (t.length <= n) return t;
   const cut = t.slice(0, n);
+  // Prefer a sentence boundary, then a word boundary, so the reader never sees
+  // a thought cut in half (there is no "expand" on the debrief).
+  const lastStop = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+  if (lastStop > n * 0.5) return cut.slice(0, lastStop + 1).trimEnd();
   const lastSpace = cut.lastIndexOf(" ");
   return (lastSpace > n * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd() + "…";
 }
@@ -92,17 +96,19 @@ export function buildDebrief(args: {
       // Both cleaners run on both fields: turn text can carry an id and a note
       // can carry markdown, so neither field is safe with only one pass.
       text: truncate(scrubTurnIds(plainText(resolved.text)), 120),
-      note: truncate(plainText(scrubTurnIds(ev.why)), 170),
+      // The judge's reasoning is the most specific coaching on the page; give it
+      // room rather than clipping it to a teaser.
+      note: truncate(plainText(scrubTurnIds(ev.why)), 360),
       tone,
     });
   }
 
   return {
-    headline: judge.headline,
+    headline: scrubTurnIds(judge.headline),
     sessionLine,
-    worked: judge.coaching.worked,
-    missed: judge.coaching.missed,
-    expert: judge.coaching.expert,
+    worked: scrubTurnIds(judge.coaching.worked),
+    missed: scrubTurnIds(judge.coaching.missed),
+    expert: scrubTurnIds(judge.coaching.expert),
     moves,
     practice: judge.practice_competency,
     nextMissionId,

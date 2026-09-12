@@ -320,9 +320,8 @@ function DebriefInner() {
           </p>
         )}
         <p className="mt-5 max-w-measure text-[0.88rem] leading-snug text-ink-3">
-          Capabilities this scenario didn&rsquo;t call for stayed exactly where
-          they were. Finishing a scenario never inflates a capability you
-          didn&rsquo;t use.
+          A capability only moves when this scenario actually called on it.
+          Finishing a scenario never inflates a capability you didn&rsquo;t use.
         </p>
       </Row>
 

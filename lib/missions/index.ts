@@ -22,7 +22,9 @@ export const FIRST_MISSION_ID: string =
   (MISSIONS.find((m) => m.availability === "recommended") ?? MISSIONS[0]).id;
 
 export function getMission(id: string): Mission | undefined {
-  return MISSIONS_BY_ID[id];
+  // Own keys only: a crafted id like "constructor" or "__proto__" would
+  // otherwise resolve to a prototype member and crash every consumer.
+  return Object.hasOwn(MISSIONS_BY_ID, id) ? MISSIONS_BY_ID[id] : undefined;
 }
 
 /** Content version stamped onto attempts. Defaults to "1" when unset. */

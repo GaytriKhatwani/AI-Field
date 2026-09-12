@@ -22,6 +22,8 @@ export const maxDuration = 50;
 type SupabaseServer = Awaited<ReturnType<typeof createClient>>;
 
 const STALE_LEASE_SECONDS = 90;
+// Mirrors the onboarding "How often do you use AI for work?" options.
+const KNOWN_AI_USAGE = new Set(["Rarely", "A few times a week", "Most days", "Throughout the day"]);
 
 // Pull the whole session for an attempt, ID'd for the judge and the debrief.
 async function loadTimeline(supabase: SupabaseServer, attemptId: string) {
@@ -188,12 +190,15 @@ export async function POST(req: Request) {
     .eq("user_id", userId)
     .maybeSingle();
 
+  // profiles.ai_usage is client-writable free text (own-row RLS), so only a
+  // known onboarding value may be interpolated into the judge prompt.
+  const aiUsage = typeof profileRow?.ai_usage === "string" ? profileRow.ai_usage : "";
   const prompt = buildJudgePrompt({
     mission,
     messages,
     events,
     deliverable,
-    operatorExperience: profileRow?.ai_usage ?? undefined,
+    operatorExperience: KNOWN_AI_USAGE.has(aiUsage) ? aiUsage : undefined,
   });
 
   let judge: JudgeOutput;

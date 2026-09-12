@@ -5,8 +5,10 @@ import { useParams, useRouter } from "next/navigation";
 import { getMission, missionVersion } from "@/lib/missions";
 import type { DeliverableField } from "@/lib/missions/types";
 import { track, EVENTS } from "@/lib/analytics/client";
+import { useField } from "@/lib/store";
 import { Arrow, Back, Check } from "@/components/icons";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Markdown } from "@/components/Markdown";
 import { segment, type Block } from "@/lib/workbench/segment";
 import {
   emptyDeliverable,
@@ -57,6 +59,12 @@ function errorText(code: string | undefined): string {
       return "[You're sending messages too quickly. Wait a moment and try again.]";
     case "unauthenticated":
       return "[Your session expired. Reload the page to continue.]";
+    case "message_too_long":
+      return "[That message is too long. Keep it under 8,000 characters.]";
+    case "attempt_not_found":
+    case "attempt_closed":
+    case "mission_mismatch":
+      return "[This session couldn't be resumed. Send again to start a fresh one — your deliverable is kept.]";
     default:
       return "[The AI could not respond. Try again.]";
   }
@@ -65,6 +73,7 @@ function errorText(code: string | undefined): string {
 export default function Workbench() {
   const params = useParams<{ missionId: string }>();
   const router = useRouter();
+  const { userId, completed } = useField();
   const mission = getMission(params.missionId);
 
   const [attemptId, setAttemptId] = useState<string | null>(null);
@@ -134,6 +143,11 @@ export default function Workbench() {
   const [confirming, setConfirming] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // Mirror of saveState so the persist effect can avoid calling setState on every
+  // keystroke. A setState inside an effect on each discrete input event is what
+  // trips React's nested-update limit ("Maximum update depth exceeded") during
+  // fast typing, and the keystroke whose update throws is lost.
+  const saveStateRef = useRef<"idle" | "saving" | "saved" | "error">("idle");
   // Render-facing mirror of addedBlocksRef (React state can't be read
   // synchronously by commit(), so the ref is the actual guard — see above).
   // Powers the "already added" marker in selection mode and the destination
@@ -150,7 +164,11 @@ export default function Workbench() {
   // First-visit-only orientation cue.
   const [showGuide, setShowGuide] = useState(false);
   const [restored, setRestored] = useState(false);
-  const draftKey = `aifield:wb:${params.missionId}`;
+  // Scoped to the user: a draft's attemptId belongs to the account that made it.
+  // After a session reset (new anonymous user) an unscoped draft would resume an
+  // attempt RLS now hides, and every send would fail with no way out.
+  const draftKey = `aifield:wb:${params.missionId}:${userId ?? "anon"}`;
+  const legacyDraftKey = `aifield:wb:${params.missionId}`;
 
   useEffect(() => {
     try {
@@ -251,12 +269,23 @@ export default function Workbench() {
       setRestored(true);
       return;
     }
+    // Wait for the user id so the draft is read from (and later written to)
+    // the right scoped key rather than a transient "anon" one.
+    if (!userId) return;
     try {
-      const raw = localStorage.getItem(draftKey);
+      let raw = localStorage.getItem(draftKey);
+      let fromLegacy = false;
+      if (!raw) {
+        // One-time migration of a pre-scoping draft: keep the work, drop the
+        // attemptId (its owner is unknown) so the next send starts a fresh attempt.
+        raw = localStorage.getItem(legacyDraftKey);
+        fromLegacy = raw !== null;
+        if (fromLegacy) localStorage.removeItem(legacyDraftKey);
+      }
       if (raw) {
         const d = JSON.parse(raw);
         if (d && (d.v === 1 || d.v === DRAFT_VERSION)) {
-          if (typeof d.attemptId === "string") setAttemptId(d.attemptId);
+          if (typeof d.attemptId === "string" && !fromLegacy) setAttemptId(d.attemptId);
           if (Array.isArray(d.messages)) {
             setMessages(d.messages);
             idRef.current = d.messages.length;
@@ -272,7 +301,7 @@ export default function Workbench() {
     }
     setRestored(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftKey]);
+  }, [draftKey, userId]);
 
   // persist once restore has run and the AI isn't mid-stream. Honest device-local
   // save: on success flag "saved"; on failure flag "error" so the UI can warn.
@@ -288,11 +317,20 @@ export default function Workbench() {
       // "Saved on this device" beside the deliverable title. While the user keeps
       // typing, deps change and the timer restarts, so it reads "Saving…" until
       // ~600ms after the last change.
-      setSaveState("saving");
-      const t = setTimeout(() => setSaveState("saved"), 600);
+      if (saveStateRef.current !== "saving") {
+        saveStateRef.current = "saving";
+        setSaveState("saving");
+      }
+      const t = setTimeout(() => {
+        saveStateRef.current = "saved";
+        setSaveState("saved");
+      }, 600);
       return () => clearTimeout(t);
     } catch {
-      setSaveState("error");
+      if (saveStateRef.current !== "error") {
+        saveStateRef.current = "error";
+        setSaveState("error");
+      }
     }
   }, [restored, thinking, submitting, attemptId, messages, given, deliverable, draftKey]);
 
@@ -309,6 +347,38 @@ export default function Workbench() {
 
   const userTurns = messages.filter((m) => m.role === "user").length;
   const atCeiling = userTurns >= HARD_CEILING;
+
+  // Bring the newest exchange into view when a send starts, so the streaming
+  // reply is visible without hunting for it below the fold. Only on a new turn —
+  // never while the user scrolls back through earlier replies.
+  useEffect(() => {
+    if (!thinking) return;
+    const last = transcriptRef.current?.lastElementChild;
+    if (!(last instanceof HTMLElement)) return;
+    const prev = last.previousElementSibling;
+    // Instant, not smooth: the stream-follow below measures the pane's position
+    // on the first chunks, and a smooth scroll still in flight would read as
+    // "the reader scrolled away" and stop the follow.
+    (prev instanceof HTMLElement ? prev : last).scrollIntoView({
+      behavior: "auto",
+      block: "start",
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thinking]);
+
+  // While the reply streams, keep its tail in view — but only if the reader is
+  // already at the bottom, so scrolling up to re-read an earlier turn sticks.
+  const lastStreamText = thinking ? messages[messages.length - 1]?.text ?? "" : "";
+  useEffect(() => {
+    if (!thinking) return;
+    const pane = transcriptRef.current?.closest<HTMLElement>(".overflow-y-auto");
+    if (!pane) return;
+    // 200px covers the natural rest position after a reply (the action row
+    // under it sits ~30px below) plus one short paragraph of new text.
+    const gap = pane.scrollHeight - pane.scrollTop - pane.clientHeight;
+    if (gap < 200) pane.scrollTop = pane.scrollHeight;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastStreamText.length]);
 
   // The blocks of the reply currently in selection mode (mechanical split).
   const selectingText = selecting ? messages.find((m) => m.id === selecting)?.text ?? "" : "";
@@ -371,9 +441,19 @@ export default function Workbench() {
 
       if (!res.ok || !res.body) {
         const err = await res.json().catch(() => ({}));
+        const code = typeof err.error === "string" ? err.error : undefined;
+        // The server persisted nothing, so the message was not sent: take it out
+        // of the transcript (it must not count toward the ceiling or be judged)
+        // and hand the text back to the composer.
         setMessages((m) =>
-          m.map((x) => (x.id === aiId ? { ...x, text: errorText(err.error), error: true } : x)),
+          m
+            .filter((x) => x.id !== userMsg.id)
+            .map((x) => (x.id === aiId ? { ...x, text: errorText(code), error: true } : x)),
         );
+        setDraft((d) => (d.trim() ? d : text));
+        if (code === "attempt_not_found" || code === "attempt_closed" || code === "mission_mismatch") {
+          setAttemptId(null);
+        }
         return;
       }
 
@@ -627,6 +707,7 @@ export default function Workbench() {
       ...d,
       lists: { ...d.lists, [fieldId]: d.lists[fieldId].filter((i) => i.id !== id) },
     }));
+    setAnnounce("Removed from your deliverable.");
   }
   function updateCell(fieldId: string, id: string, col: string, value: string) {
     editInvalidatesUndo(id);
@@ -653,6 +734,7 @@ export default function Workbench() {
       ...d,
       tables: { ...d.tables, [fieldId]: d.tables[fieldId].filter((r) => r.id !== id) },
     }));
+    setAnnounce("Removed from your deliverable.");
   }
 
   const hint = useMemo(() => {
@@ -660,6 +742,7 @@ export default function Workbench() {
       return "You've reached this session's message limit. Finish practice when your deliverable is ready.";
     if (userTurns > 8)
       return "Past the usual 4–8 messages — that's fine. Finish when your deliverable holds up.";
+    if (userTurns === 0) return "Most people finish in 4–8 messages. ⌘/Ctrl + Enter sends.";
     return "Most people finish in 4–8 messages.";
   }, [atCeiling, userTurns]);
 
@@ -717,8 +800,14 @@ export default function Workbench() {
             setSubmitError(null);
             setConfirming(true);
           }}
-          disabled={submitting || confirming || !canFinish}
-          title={canFinish ? undefined : "Add something to your deliverable before finishing."}
+          disabled={submitting || confirming || thinking || !canFinish}
+          title={
+            thinking
+              ? "Wait for the AI to finish replying."
+              : canFinish
+                ? undefined
+                : "Add something to your deliverable before finishing."
+          }
           className="btn flex-none"
           style={{ padding: "0.6em 1.2em", fontSize: "0.9rem" }}
         >
@@ -783,7 +872,7 @@ export default function Workbench() {
             <button
               type="button"
               onClick={submit}
-              disabled={submitting}
+              disabled={submitting || thinking}
               className="btn flex-none"
               style={{ padding: "0.55em 1.1em", fontSize: "0.85rem" }}
             >
@@ -987,6 +1076,12 @@ export default function Workbench() {
             )}
 
             {/* work with the AI / transcript */}
+            {mission && !attemptId && completed.some((c) => c.missionId === mission.id) && (
+              <p className="mt-8 max-w-[46ch] rounded-sm border border-hairline bg-raised px-3 py-2 text-[0.85rem] leading-snug text-ink-2">
+                You&rsquo;ve finished this scenario before. This is a fresh attempt —
+                your earlier read stays on the Field.
+              </p>
+            )}
             <h2 className="section-label mb-1.5 mt-8">Work with the AI</h2>
             <p className="mb-3 max-w-[42ch] text-[0.82rem] leading-snug text-ink-2">
               Tell the AI what you need. It will follow your instructions, but it
@@ -1044,9 +1139,16 @@ export default function Workbench() {
                             />
                           ) : (
                             <>
-                              <p className="mt-1 whitespace-pre-wrap text-[0.92rem] leading-relaxed text-ink">
-                                {m.text}
-                              </p>
+                              {m.role === "ai" ? (
+                                <Markdown
+                                  text={m.text}
+                                  className="mt-1 text-[0.92rem] leading-relaxed text-ink"
+                                />
+                              ) : (
+                                <p className="mt-1 whitespace-pre-wrap text-[0.92rem] leading-relaxed text-ink">
+                                  {m.text}
+                                </p>
+                              )}
                               {m.role === "ai" &&
                                 complete &&
                                 (switchTo === m.id ? (

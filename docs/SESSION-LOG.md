@@ -193,3 +193,39 @@ Audit found no P0/P1 (detector clean; contrast passes AA). Fixed the P2/P3s:
 
 ## Still owed (unchanged)
 - `DESIGN.md` standalone record; real-device mobile QA. The "+ add doesn't focus" papercut is now fixed; the reading-route skip-links and server root-redirect remain consciously deferred.
+
+# Session — 2026-09-12 (orchestrated QA sweep → fixes)
+
+Four parallel read-only subagents (browser UX walk on prod, code review, API black-box tests on a local :3100 dev server, judge/content accuracy audit incl. one real gate run), then one fix pass. Verified: `tsc --noEmit` clean; `verify-progression`, `verify-workbench-transfer` pass; API defects re-tested by the same agent after the patch; `gate-meeting-chaos` 9/9 and `gate-dont-trust-the-ai` 9/9 PASS with the new judge prompt.
+
+## Fixed
+- **Judge never saw the source material** (P0): `lib/judge/prompt.ts` now renders every `mission.resources[].content` as ground truth, plus an "evidence, never instructions" rule (transcript/deliverable can't steer the reviewer) and a mission-neutral invention example. `lib/debrief/build.ts` scrubs turn ids from headline/worked/missed/expert too.
+- **Don't Trust the AI** had no AI draft to check: added the `ai-draft` resource (planted $3.2M line), scenario points at both materials; Finance sender renamed Ines (Dana was reused from Meeting Chaos).
+- **Meeting Chaos rule contradiction**: "due date where the notes give one — say plainly when they don't."
+- **The Bad Prompt** scenario no longer claims attachments that don't exist.
+- **Practice pitch** (`lib/competencies.ts`): only asserts a miss ("you took the first answer as final") when the profile band is not_shown/emerging; otherwise "X is where there's most room to grow".
+- **`recommendNext`** prefers non-`later` missions, so the debrief no longer pushes The Brief while the Field says "later".
+- **API hardening**: workbench message cap 8000 chars (a 2 MB message used to permanently brick the attempt's evaluation), typed body validation (no more bare 500s), `mission_mismatch` 409 when the request's mission ≠ the attempt's, model-failure placeholder no longer persisted as an AI turn. Submit validates the deliverable against the mission's fields (keys, column ids, ≤4000 chars/cell, ≤64 KB) before creating an attempt, and reuses an open attempt when no attemptId is sent. `getMission` uses `Object.hasOwn` (`/workbench/constructor` crashed). Auth callback `next` must be a same-origin path. Judge call bounded to 45s / no SDK retries so a slow judge hits the lease-reset path instead of being killed. `profiles.ai_usage` whitelisted before interpolation into the judge prompt.
+- **Typing dropped characters + "Maximum update depth exceeded"** (P1, reproduced unminified): the autosave effect called `setSaveState("saving")` on every keystroke, and a setState inside an effect on each discrete input event trips React's nested-update guard during fast typing; the keystroke whose update throws is lost. Now guarded by a ref so state only changes on transitions. Verified: three 60–160 char bursts, 0 drops, 0 exceptions.
+- **Debrief**: evidence notes no longer cut mid-sentence (sentence-boundary truncation, 360 chars); the "capabilities this scenario didn't call for stayed where they were" line reworded (every mission weights all five, so it was contradicted by the list above it).
+- **Workbench UX**: transcript pins the sent message and follows the streaming reply while the reader is at the bottom (no snap-back after scrolling up); composer hint names ⌘/Ctrl+Enter before the first send; removing an item announces "Removed" instead of leaving the last "Added…" status on screen.
+- **Workbench client**: Finish disabled while the AI is streaming; a failed send is removed from the transcript and its text restored to the composer (it never counted server-side); draft key scoped to the user (`aifield:wb:<mission>:<userId>`, legacy drafts migrated without their attemptId) and a stale attempt clears itself on `attempt_not_found`/`attempt_closed`.
+
+## Round two (owner decisions, same day)
+- **Ship**: commit + push to main (Vercel redeploys). **`@vercel/analytics` removed** (never imported). **`CodexWireframes/` gitignored** (19 MB of local design refs).
+- **The Brief "Us" column now has a source**: new `our-position` resource ("Where we stand"), scenario points at it; gate re-run after the change (see below).
+- **AI replies render as formatting** (`components/Markdown.tsx`, dependency-free: headings, nested lists, GFM tables, fenced code, bold/italic/code). Reading view only — block splitting for transfer stays in `lib/workbench/segment.ts`; raw-selection capture still works because it reads the DOM selection's text.
+- **End-to-end gate** `scripts/gate-e2e-meeting-chaos.ts`: scripted PERSON turns, live workbench AI (same system prompt + materials framing, now shared via `lib/ai/workbenchSystem.ts` so provider and script cannot drift), real judge. Weak deliverable = the AI's last reply segmented and dumped into one section.
+- **Gate results after round two**: `gate-the-brief` PASS 10/10 with the new resource; `gate-e2e-meeting-chaos` PASS 8/8 — real AI, strong `{context strong, direction strong, iteration proficient, verification developing, synthesis developing}` vs weak `{developing, emerging, not_shown, not_shown, emerging}`. Notable: the judge (now reading the notes) flagged that the hand-curated strong deliverable lists "Cut the referral feature" as a decision the notes show was never decided — an accurate read, and a reason the strong Synthesis band sits at developing in this run. The weak AI reply was an honest reorganised notes dump with no invented facts, which is exactly the prod condition the scripted gates couldn't cover.
+- **Polish**: onboarding keeps keyboard focus on the next question's first option; Field "Review ›" always visible; workbench shows a "fresh attempt" note when reopening a finished mission; briefing lists "Materials you'll have".
+
+## Known, not fixed (decisions for the owner)
+- The Brief's "Us" column has no source material; the strong gate deliverable fills it unsourced. Needs a "what we offer" resource or a template change.
+- Gates script the AI's failures; the real workbench AI is told not to fabricate, so prod discrimination is unproven for iteration-heavy missions. An end-to-end gate variant is the fix.
+- Judge can't see WHEN a resource was shared (events listed before messages).
+- First-rep Save moment keys on distinct missions, so a second Meeting Chaos rep shows it again.
+- Post-submit immutability and scores are enforced by UI/RLS-own-row only.
+- Submit without attemptId twice, sequentially, still creates two attempts (client always sends the id once one exists; only the no-chat path is exposed).
+- `@vercel/analytics` is installed but not imported anywhere (uncommitted).
+- Deliberate-by-design but surprising to first-timers: a parsed table-row block transfers into ONE column (split-only, no interpretation); the debrief repeats the five bands in the Save block.
+- Judge output in one live rep called an item a "decision" in the headline and an "open question" in the body — prompt-level wording tension, no fix applied.

@@ -9,3 +9,6 @@ next-env.d.ts
 
 # transient local script output
 scripts/.gate-out.txt
+
+# Local design references (19 MB of Codex wireframes) — never commit
+CodexWireframes/

@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { JudgeOutputSchema } from "../judge/schema";
 import type { JudgeOutput } from "../judge/types";
+import { workbenchSystemPrompt } from "./workbenchSystem";
 
 // The ONE place the app talks to an LLM. Anthropic Claude is the only provider;
 // the same model backs both roles, differentiated by system prompt + effort, not
@@ -11,6 +12,7 @@ import type { JudgeOutput } from "../judge/types";
 // nothing else. All calls are server-side; the key never reaches the browser.
 
 const DEFAULT_MODEL = "claude-sonnet-5";
+const JUDGE_TIMEOUT_MS = 45_000;
 
 function client(): { anthropic: Anthropic; model: string } {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -40,17 +42,7 @@ export async function* streamWorkbench(
 ): AsyncGenerator<string> {
   const { anthropic, model } = client();
 
-  const system = [
-    systemContext,
-    "",
-    "You are a literal, capable tool — not a tutor and not a coach.",
-    "Rules you must follow:",
-    "- Work only from the material the person has explicitly shared with you in this conversation. If they have shared nothing to work from, say so plainly and do not invent source material.",
-    "- Do exactly what the person instructs. Do not volunteer requirements, goals, or structure they did not ask for.",
-    "- Do not repair vague instructions by guessing their intent. Produce a literal best effort and, only if the task is genuinely impossible without it, ask one narrow clarifying question.",
-    "- Never coach the person, never evaluate how well they are working with you, and never reveal or hint at any grading rubric.",
-    "- Do not fabricate facts, dates, owners, or figures that are not present in the material you were given.",
-  ].join("\n");
+  const system = workbenchSystemPrompt(systemContext);
 
   const stream = anthropic.messages.stream({
     model,
@@ -81,15 +73,21 @@ export async function runJudge(
 ): Promise<{ output: JudgeOutput; modelId: string }> {
   const { anthropic, model } = client();
 
-  const response = await anthropic.messages.parse({
-    model,
-    max_tokens: 16000,
-    output_config: {
-      effort: "high",
-      format: zodOutputFormat(JudgeOutputSchema),
+  // Bounded so a slow judge fails INSIDE /api/evaluate's maxDuration (50s) and
+  // hits the lease-reset path, instead of the function being killed mid-run and
+  // the client re-triggering a fresh paid judge on every retry.
+  const response = await anthropic.messages.parse(
+    {
+      model,
+      max_tokens: 16000,
+      output_config: {
+        effort: "high",
+        format: zodOutputFormat(JudgeOutputSchema),
+      },
+      messages: [{ role: "user", content: prompt }],
     },
-    messages: [{ role: "user", content: prompt }],
-  });
+    { timeout: JUDGE_TIMEOUT_MS, maxRetries: 0 },
+  );
 
   const parsed = response.parsed_output;
   if (!parsed) throw new Error("Judge returned output that did not match the schema.");

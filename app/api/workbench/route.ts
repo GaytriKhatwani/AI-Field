@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient, requireUserId, UnauthenticatedError } from "@/lib/supabase/server";
 import { getMission, missionVersion } from "@/lib/missions";
 import { streamWorkbench, type ChatTurn } from "@/lib/ai/provider";
+import { materialsTurn } from "@/lib/ai/workbenchSystem";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +14,10 @@ export const maxDuration = 50;
 type SupabaseServer = Awaited<ReturnType<typeof createClient>>;
 
 const HARD_CEILING = 12; // user messages per attempt (SPEC safety cap)
+// One turn is a request, not a document. A multi-MB message is persisted before
+// the model call, the model rejects it, and every later turn AND the judge
+// rebuild history from it — the attempt can never be evaluated again.
+const MAX_MESSAGE_CHARS = 8000;
 const RATE_LIMIT = 30; // messages
 const RATE_WINDOW_SECONDS = 60;
 
@@ -45,28 +50,38 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "server_not_configured" }, { status: 500 });
   }
 
-  const body = (await req.json().catch(() => null)) as Body | null;
-  if (!body?.missionId || !body?.message?.trim())
+  const body = (await req.json().catch(() => null)) as Partial<Body> | null;
+  const message = typeof body?.message === "string" ? body.message.trim() : "";
+  if (typeof body?.missionId !== "string" || !message)
     return NextResponse.json({ error: "missionId and message required" }, { status: 400 });
+  if (message.length > MAX_MESSAGE_CHARS)
+    return NextResponse.json({ error: "message_too_long" }, { status: 400 });
 
   const mission = getMission(body.missionId);
   if (!mission) return NextResponse.json({ error: "mission_not_found" }, { status: 404 });
 
-  const givenIds = (body.givenResourceIds ?? []).filter((id) =>
-    mission.resources.some((r) => r.id === id),
+  const givenIds = (Array.isArray(body.givenResourceIds) ? body.givenResourceIds : []).filter(
+    (id): id is string => typeof id === "string" && mission.resources.some((r) => r.id === id),
   );
 
   // Ensure an attempt (create on first message).
-  let attemptId = body.attemptId;
+  // null/undefined = no attempt yet (the client sends null before its first turn).
+  if (body.attemptId != null && typeof body.attemptId !== "string")
+    return NextResponse.json({ error: "attemptId must be a string" }, { status: 400 });
+  let attemptId = body.attemptId ?? undefined;
   if (attemptId) {
     const { data: existing } = await supabase
       .from("challenge_attempts")
-      .select("id, status")
+      .select("id, status, mission_id")
       .eq("id", attemptId)
       .single();
     if (!existing) return NextResponse.json({ error: "attempt_not_found" }, { status: 404 });
     if (existing.status !== "in_progress")
       return NextResponse.json({ error: "attempt_closed" }, { status: 409 });
+    // The attempt is judged against ITS mission; another mission's materials
+    // and system context must not be run under it.
+    if (existing.mission_id !== mission.id)
+      return NextResponse.json({ error: "mission_mismatch" }, { status: 409 });
   } else {
     const { data: created, error } = await supabase
       .from("challenge_attempts")
@@ -140,21 +155,15 @@ export async function POST(req: Request) {
     user_id: userId,
     seq: userSeq,
     role: "user",
-    content: body.message.trim(),
+    content: message,
   });
 
   // Build history: the ONLY materials the AI sees are the ones the user gave.
   const history: ChatTurn[] = [];
   if (givenIds.length > 0) {
-    const materials = givenIds
-      .map((id) => {
-        const r = mission.resources.find((x) => x.id === id)!;
-        return `--- ${r.label} ---\n${r.content}`;
-      })
-      .join("\n\n");
     history.push({
       role: "user",
-      text: `Here is the material I am giving you to work from. Use only this:\n\n${materials}`,
+      text: materialsTurn(givenIds.map((id) => mission.resources.find((x) => x.id === id)!)),
     });
   }
   for (const m of prior ?? []) {
@@ -163,7 +172,7 @@ export async function POST(req: Request) {
       text: m.content as string,
     });
   }
-  history.push({ role: "user", text: body.message.trim() });
+  history.push({ role: "user", text: message });
 
   // Stream the reply; persist the full AI message when the stream closes.
   const encoder = new TextEncoder();
@@ -171,25 +180,38 @@ export async function POST(req: Request) {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let full = "";
+      let failed = false;
       try {
         for await (const chunk of streamWorkbench(mission.workbenchSystemContext, history)) {
           full += chunk;
           controller.enqueue(encoder.encode(chunk));
         }
-      } catch {
-        const msg = "\n[The AI could not respond. Try again.]";
-        full += msg;
-        controller.enqueue(encoder.encode(msg));
+      } catch (err) {
+        failed = true;
+        console.error("[workbench] model_failed:", err instanceof Error ? err.message : err);
+        try {
+          controller.enqueue(encoder.encode("\n[The AI could not respond. Try again.]"));
+        } catch {
+          /* client went away */
+        }
       }
-      const aiSeq = await nextSeq(supabase, "workbench_messages", capturedAttemptId);
-      await supabase.from("workbench_messages").insert({
-        attempt_id: capturedAttemptId,
-        user_id: userId,
-        seq: aiSeq,
-        role: "ai",
-        content: full,
-      });
-      controller.close();
+      // Persist only a real reply. The failure placeholder is UI feedback, not an
+      // AI turn the judge should read.
+      if (!failed && full.trim()) {
+        const aiSeq = await nextSeq(supabase, "workbench_messages", capturedAttemptId);
+        await supabase.from("workbench_messages").insert({
+          attempt_id: capturedAttemptId,
+          user_id: userId,
+          seq: aiSeq,
+          role: "ai",
+          content: full,
+        });
+      }
+      try {
+        controller.close();
+      } catch {
+        /* already closed by the client */
+      }
     },
   });
 

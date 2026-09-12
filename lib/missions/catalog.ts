@@ -17,7 +17,7 @@ export const theBadPrompt: Mission = {
   availability: "available",
   briefing: {
     scenario:
-      "Sam from marketing pings you: \"can you take a crack at this? I've been going in circles.\" Attached is the prompt they keep feeding the AI — just \"write a product announcement\" — and a run of drafts that all read like the same press-release filler. What they actually need is the announcement for shared team scheduling, going to existing customers, and it has to sound like us, not a launch-hype generator. Sam's note on how the company writes is in with the materials.",
+      "Sam from marketing pings you: \"can you take a crack at this? I've been going in circles.\" The prompt they keep feeding the AI is just \"write a product announcement\", and every draft comes back as the same press-release filler. What they actually need is the announcement for shared team scheduling, going to existing customers, and it has to sound like us, not a launch-hype generator. Sam's note on how the company writes is in with the materials.",
     objective:
       "Get the AI to a product announcement you'd be willing to send: specific to the feature, pitched to existing customers, in a plain confident voice.",
     constraints: [
@@ -68,7 +68,7 @@ export const theBrief: Mission = {
   availability: "later",
   briefing: {
     scenario:
-      "Your director drops a message: \"Can you get AI to put together a competitive one-pager on the new entrant? Need it for the board.\" That's the whole brief. Before you point the AI at anything, you have to decide what a board-ready one-pager actually needs — and what you'd have to know to make one that isn't hand-wavy.",
+      "Your director drops a message: \"Can you get AI to put together a competitive one-pager on the new entrant? Need it for the board.\" That's the whole brief. Before you point the AI at anything, you have to decide what a board-ready one-pager actually needs — and what you'd have to know to make one that isn't hand-wavy. You have the few facts anyone has on the entrant, and a short note on where we stand.",
     objective:
       "Assemble a brief the AI can execute against, then produce a competitive one-pager that would survive a board's questions.",
     constraints: [
@@ -88,6 +88,18 @@ export const theBrief: Mission = {
 - pricing starts lower than ours; unclear what's included at that tier
 - strong onboarding, thin on integrations
 - one large logo on their site (unverified whether it's a paying customer)`,
+    },
+    {
+      id: "our-position",
+      label: "Where we stand",
+      kind: "notes",
+      summary: "The short version of our own product and go-to-market.",
+      content: `US — the short version:
+- three paid tiers plus a free trial; mid-market is the core segment
+- sales-assisted onboarding for larger accounts; self-serve for the rest
+- 40+ integrations, incl. the big CRMs; this is what most customers cite when they renew
+- onboarding is our weakest review theme; a redesign is in progress, no date yet
+- customers: several hundred paying accounts, five years in market`,
     },
   ],
   workbenchSystemContext:
@@ -124,7 +136,7 @@ export const dontTrustTheAI: Mission = {
   availability: "available",
   briefing: {
     scenario:
-      "You asked the AI to turn Dana's Q2 finance update into a short summary for a stakeholder email, and it came back reading clean and finished. It's going out under your name, though — and a summary that tidy is exactly where a number the source never gave can slip through. Check it against Dana's update before it goes anywhere.",
+      "You asked the AI to turn Finance's Q2 update into a short summary for a stakeholder email, and it came back reading clean and finished. It's going out under your name, though — and a summary that tidy is exactly where a number the source never gave can slip through. Both the AI's draft and the original update are in your materials. Check one against the other before it goes anywhere.",
     objective:
       "Produce a summary you'd actually put your name on — every figure traced back to the source, every unsupported claim caught and removed.",
     constraints: [
@@ -138,9 +150,9 @@ export const dontTrustTheAI: Mission = {
       id: "quarterly",
       label: "Q2 update from Finance",
       kind: "document",
-      summary: "Dana's quarterly recap — the figures you're checking against.",
+      summary: "Finance's quarterly recap — the figures you're checking against.",
       content: `Subject: Q2 numbers before board prep
-From: Dana (Finance)
+From: Ines (Finance)
 
 Sharing where Q2 landed so we're all working off the same numbers.
 
@@ -152,6 +164,18 @@ Enterprise is the one to watch — a couple of conversations picked up after
 the conference and one could be sizeable, but nothing's signed yet.
 
 Full deck to follow before the board meeting.`,
+    },
+    {
+      id: "ai-draft",
+      label: "The AI's draft summary",
+      kind: "document",
+      summary: "The tidy summary the AI produced — unchecked.",
+      content: `Draft summary for the stakeholder email:
+
+Q2 was a strong quarter. Revenue reached $1.24M, up 9% on Q1, and we added
+312 net new customers after 41 churned. Gross margin held at 71%, and
+support ticket volume fell 6% even as the account base grew. The enterprise
+pipeline now stands at $3.2M, a strong signal heading into next quarter.`,
     },
   ],
   workbenchSystemContext:

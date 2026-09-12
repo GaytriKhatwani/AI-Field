@@ -107,6 +107,24 @@ export default function Briefing() {
         </section>
       </div>
 
+      {mission.resources.length > 0 && (
+        <section className="mt-[clamp(2.5rem,6vw,3.75rem)]">
+          <h2 className="section-label mb-3">Materials you&rsquo;ll have</h2>
+          <ul className="m-0 max-w-measure list-none space-y-2 p-0">
+            {mission.resources.map((r) => (
+              <li key={r.id} className="text-[1.02rem] leading-snug text-ink-2">
+                <span className="font-semibold text-ink">{r.label}</span>
+                <span className="text-ink-3"> — {r.summary}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 max-w-measure text-[0.85rem] leading-snug text-ink-3">
+            You choose which of these to share with the AI, and when. It only sees
+            what you give it.
+          </p>
+        </section>
+      )}
+
       <hr className="rule my-[clamp(2.5rem,6vw,3.75rem)]" />
 
       <div className="flex flex-wrap items-end justify-between gap-8">

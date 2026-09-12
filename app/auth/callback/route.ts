@@ -9,7 +9,10 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/field";
+  // Only a same-origin path may be the landing target ("@evil.com", "//evil.com"
+  // and absolute URLs would otherwise redirect off-site after a real sign-in).
+  const raw = searchParams.get("next") ?? "/field";
+  const next = /^\/(?![\/\\])[^@\s]*$/.test(raw) ? raw : "/field";
 
   if (code) {
     const supabase = await createClient();

@@ -130,6 +130,21 @@ export const FRESH_PROFILE: Profile = {
 // Behaviour-based recommendation copy: for the capability to practise next, name
 // the behaviour that needs more practice and what the recommended scenario will
 // exercise — never "your gap" / "close the gap" / remedial language.
+// Neutral forms for when the capability was demonstrated (developing or better):
+// it is simply the one with the most room to grow, not a miss.
+const PRACTICE_ROOM: Record<Competency, string> = {
+  context:
+    "setting up context is where there's most room to grow. This scenario focuses on giving the AI the right context before you start.",
+  direction:
+    "direction is where there's most room to grow. This scenario focuses on turning a loose ask into clear, specific direction.",
+  iteration:
+    "iteration is where there's most room to grow. This scenario focuses on pushing past the first response.",
+  verification:
+    "verification is where there's most room to grow. This scenario focuses on catching what the AI gets wrong.",
+  synthesis:
+    "synthesis is where there's most room to grow. This scenario focuses on turning rough output into finished work.",
+};
+
 const PRACTICE_NEED: Record<Competency, string> = {
   context:
     "the AI didn't always have the context it needed. This scenario focuses on setting up the right context before you start.",
@@ -161,7 +176,12 @@ export function practicePitch(gap: Competency, profile: Profile): string {
       : top && (topBand === "developing" || topBand === "emerging")
         ? `You made progress on ${label}`
         : "You made a solid first pass";
-  return `${ack}, but ${PRACTICE_NEED[gap]}`;
+  // Only assert a miss when the profile actually reads as one; a "proficient"
+  // practice pick must not be told they "took the first answer as final".
+  const gapBand = scoreToBand(profile[gap]);
+  const need =
+    gapBand === "not_shown" || gapBand === "emerging" ? PRACTICE_NEED[gap] : PRACTICE_ROOM[gap];
+  return `${ack}, but ${need}`;
 }
 
 /** The gap = lowest-scoring competency, ties broken by COMPETENCY_ORDER. */
