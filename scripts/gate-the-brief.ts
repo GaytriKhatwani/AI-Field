@@ -33,7 +33,7 @@ const strong: JudgeInput = {
     {
       turnId: "msg_03",
       role: "user",
-      text: "You invented two things my notes don't contain: the '40% cheaper' figure (notes only say 'starts lower', and what's included at that tier is unclear) and the '$20M raised'. Remove both. The site logo is unverified — the notes say it's unclear whether they're a paying customer, so it can't be stated as 'a paying enterprise customer'; move it to assumptions. Rebuild the table using only my facts and put every unsourced item in the assumptions list.",
+      text: "You invented two things my notes don't contain: the '40% cheaper' figure (notes only say 'starts lower', and what's included at that tier is unclear) and the '$20M raised'. Remove both. The site logo is just a logo — the notes don't say whether that company is a paying customer, so it can't be stated as 'a paying enterprise customer'; move it to assumptions. Rebuild the table using only my facts and put every unsourced item in the assumptions list.",
     },
     {
       turnId: "msg_04",

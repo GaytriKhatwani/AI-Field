@@ -229,3 +229,11 @@ Four parallel read-only subagents (browser UX walk on prod, code review, API bla
 - `@vercel/analytics` is installed but not imported anywhere (uncommitted).
 - Deliberate-by-design but surprising to first-timers: a parsed table-row block transfers into ONE column (split-only, no interpretation); the debrief repeats the five bands in the Save block.
 - Judge output in one live rep called an item a "decision" in the headline and an "open question" in the body — prompt-level wording tension, no fix applied.
+
+# Session — 2026-09-15 (push + close out the progression/content plan)
+
+- Pushed the 2026-09-12 QA-sweep commit (`460cf50`) to main after the owner re-authenticated; Vercel redeploys from it.
+- `docs/PLAN-progression-and-content.md` audited against the code: Parts 1–2 (canonical `BAND_SCALE`/`BAND_TARGET`, `FIRST_MISSION_ID`, recommender fallback, no `getMission(...)!`) were already done; plan status was stale. Marked DONE.
+- Part 3 content pass finished: The Brief's notes keep the facts but drop the two parentheticals that named the trap ("rest is rumour", "unverified whether it's a paying customer"); the gate's strong transcript updated to match the new source (plan step 4 — never the judge). The Bad Prompt's material is now Sam's actual afternoon message (same facts, same banned words) and the scenario reads as a forwarded ask rather than an exercise. Meeting Chaos already at the realism bar; Don't Trust the AI's giveaway NOTE was already gone and it gained the AI draft on 09-12.
+- Privacy copy on the briefing already reads as the plan asked; two stale "Gemini" comments fixed.
+- Verification: `tsc` clean; `gate-catalog.ts` run once after the edits: the-brief PASS, dont-trust-the-ai PASS, the-bad-prompt 9/10 — every band check passed (weak read all not_shown, strong direction/iteration strong) and the one miss was the coaching-wording regex: the judge wrote "didn't give the AI any of Sam's actual details (feature, audience, style rules)" while the headline said "hype-filled filler". Same miss, different words. Widened that gate check to accept the judge's natural phrasing (gate edit, not a judge edit) and re-ran the-bad-prompt alone.

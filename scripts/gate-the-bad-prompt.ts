@@ -93,8 +93,11 @@ export const spec: GateSpec = {
     check("strong Iteration clearly higher than weak", gap("iteration") >= 2);
     check("strong Direction clearly higher than weak", gap("direction") >= 2);
     check("weak coaching names the vague/hype/off-voice miss",
-      /hype|generic|vague|voice|thrilled|excited|game.?changer|filler|specific|off.?brand|constraint/i.test(
-        wOut.coaching.missed,
+      // The judge names this miss in its own words: sometimes "hype/filler",
+      // sometimes "didn't give the AI the style rules / audience / feature".
+      // Both are the same miss; read headline + missed together.
+      /hype|generic|vague|voice|thrilled|excited|game.?changer|filler|specific|off.?brand|constraint|style|rules|audience|feature|details/i.test(
+        `${wOut.headline} ${wOut.coaching.missed}`,
       ));
   },
 };

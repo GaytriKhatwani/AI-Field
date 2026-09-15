@@ -1,7 +1,7 @@
 import type { Competency } from "../missions/types";
 import type { Band } from "../competencies";
 
-// The judge's output contract. The Gemini call is constrained to this shape via
+// The judge's output contract. The judge call is constrained to this shape via
 // structured output (see lib/judge/schema.ts). The judge produces bands, prose,
 // and the named practice gap — it NEVER updates the profile or picks a mission;
 // those are deterministic app code (lib/progression/*).

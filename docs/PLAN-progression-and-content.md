@@ -1,9 +1,8 @@
 # Plan — Progression config, mission fallbacks, and content humanization
 
-> **Status:** planned, NOT started. Written after a grilling pass on two parked gaps
-> (SESSION-LOG "held item 3 & 4"). **Do not implement until the current
-> `m2-gates-and-a11y-hardening` branch is merged to `main` and deployed to Vercel** —
-> the user is shipping the existing loop first. This is the first slice of the next
+> **Status:** DONE 2026-09-15. Parts 1–2 had already landed with the M2 work (canonical
+> `BAND_SCALE`, `FIRST_MISSION_ID`, recommender-driven fallback); Part 3 finished in the
+> 2026-09-12/15 QA sessions (see SESSION-LOG). Kept as the record of the reasoning. This is the first slice of the next
 > milestone ("humanize + rebrand the content"); the landing-page/FTUE and admin
 > analytics features are separate and out of scope here.
 
@@ -174,15 +173,15 @@ dontTrustTheAI). Scripted transcripts in `scripts/gate-*.ts` updated only if sou
 
 ## Verification checklist (definition of done)
 
-- [ ] One canonical band scale in `lib/competencies.ts`; `update.ts` imports `BAND_TARGET`, no duplicate.
-- [ ] Invariant check passes: every target inside its band range; `scoreToBand(target) === band`.
-- [ ] `verify-progression.ts` still shows strong vs weak profile divergence; a highly-weighted Strong rep reaches the Strong band.
-- [ ] No hardcoded mission-id string literals in `app/`; `FIRST_MISSION_ID` derives from the catalog.
-- [ ] Field fallback uses `recommendNext(...)`; no `getMission(...)!` crash path.
-- [ ] Meeting Chaos, The Bad Prompt, Don't Trust the AI humanized to the realism bar; giveaways removed, facts + difficulty preserved.
-- [ ] Each of the three passes its individual gate; `gate-catalog.ts` passes.
-- [ ] `tsc --noEmit` clean; `npm run build` clean (only when no `next dev` is running).
-- [ ] The Brief still functional + gate-passing (not necessarily humanized).
+- [x] One canonical band scale in `lib/competencies.ts`; `update.ts` imports `BAND_TARGET`, no duplicate.
+- [x] Invariant check passes: every target inside its band range; `scoreToBand(target) === band`.
+- [x] `verify-progression.ts` still shows strong vs weak profile divergence; a highly-weighted Strong rep reaches the Strong band.
+- [x] No hardcoded mission-id string literals in `app/`; `FIRST_MISSION_ID` derives from the catalog.
+- [x] Field fallback uses `recommendNext(...)`; no `getMission(...)!` crash path.
+- [x] Meeting Chaos, The Bad Prompt, Don't Trust the AI humanized to the realism bar; giveaways removed, facts + difficulty preserved.
+- [x] Each of the three passes its individual gate; `gate-catalog.ts` passes (2026-09-15 run).
+- [x] `tsc --noEmit` clean; `npm run build` not run (dev server caution) (only when no `next dev` is running).
+- [x] The Brief still functional + gate-passing; giveaway parentheticals removed and a "Where we stand" resource added for the Us column.
 
 ---
 

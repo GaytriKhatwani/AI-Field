@@ -1,4 +1,4 @@
-// THE M1 DISCRIMINATION GATE (real Gemini judge).
+// THE M1 DISCRIMINATION GATE (real judge).
 // Runs the actual judge on a STRONG vs a WEAK Meeting Chaos transcript and checks
 // the bands, profile movement, and coaching diverge in the expected direction.
 // This is the go/no-go: a pipeline that cannot discriminate does not pass.

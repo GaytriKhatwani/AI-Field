@@ -17,7 +17,7 @@ export const theBadPrompt: Mission = {
   availability: "available",
   briefing: {
     scenario:
-      "Sam from marketing pings you: \"can you take a crack at this? I've been going in circles.\" The prompt they keep feeding the AI is just \"write a product announcement\", and every draft comes back as the same press-release filler. What they actually need is the announcement for shared team scheduling, going to existing customers, and it has to sound like us, not a launch-hype generator. Sam's note on how the company writes is in with the materials.",
+      "A message from Sam in marketing lands mid-afternoon: \"can you take a crack at this? I've been going in circles.\" Sam has been asking the AI to \"write a product announcement\" and every draft comes back as the same press-release filler. The announcement is for shared team scheduling and goes to existing customers. It needs to sound like the company, not a launch-hype generator. Sam's message with the feature details and the house style is in your materials.",
     objective:
       "Get the AI to a product announcement you'd be willing to send: specific to the feature, pitched to existing customers, in a plain confident voice.",
     constraints: [
@@ -30,18 +30,23 @@ export const theBadPrompt: Mission = {
   resources: [
     {
       id: "brand-note",
-      label: "Sam's brand + feature note",
-      kind: "document",
-      summary: "What the feature does and how the company sounds.",
-      content: `From Sam's brand notes —
+      label: "Sam's message",
+      kind: "email",
+      summary: "The feature details and how the company writes, as Sam sent them.",
+      content: `Sam (marketing), 2:40pm
 
-The feature: shared team scheduling. Teammates can see each other's
-availability and book shared time without the usual back-and-forth. It's
-on all paid plans.
+ok so the feature is shared team scheduling. teammates can see each other's
+availability and book shared time without the usual back-and-forth. it's on
+all paid plans, nothing to switch on.
 
-How we write: plain and specific, a little dry. We say what a thing does,
-not how we feel about it. Things we never say — "thrilled", "excited to
-announce", "game-changer", "revolutionary". Keep sentences short.`,
+for voice, this is the bit from the style doc that everyone ignores:
+"plain and specific, a little dry. we say what a thing does, not how we
+feel about it. we never say 'thrilled', 'excited to announce',
+'game-changer', 'revolutionary'. short sentences."
+
+the drafts I've got all open with "we're thrilled to announce". I can't send
+that. if you can get it to something I'd actually put in front of customers
+that'd be great`,
     },
   ],
   workbenchSystemContext:
@@ -83,11 +88,12 @@ export const theBrief: Mission = {
       label: "What we know",
       kind: "notes",
       summary: "The few facts you actually have about the new entrant.",
-      content: `NEW ENTRANT — what's actually known (rest is rumour):
+      content: `NEW ENTRANT — what we actually know
 - launched 4 months ago, self-serve only, no sales team
 - pricing starts lower than ours; unclear what's included at that tier
 - strong onboarding, thin on integrations
-- one large logo on their site (unverified whether it's a paying customer)`,
+- one large logo on their site
+- (that's it — everything else I've heard is second-hand)`,
     },
     {
       id: "our-position",
