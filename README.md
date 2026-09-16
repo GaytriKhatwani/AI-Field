@@ -109,6 +109,7 @@ Environment contract (see `.env.local.example` for the authoritative list):
 ## Repository docs
 
 - **[PRODUCT.md](PRODUCT.md)** — durable product truth (users, purpose, positioning, constraints).
+- **[docs/HANDOFF.md](docs/HANDOFF.md)** — current state, what's next, how to verify. Read this first.
 - **[docs/SPEC.md](docs/SPEC.md)** — buildable requirements, user stories, the M1 gate.
 - **[docs/plan.md](docs/plan.md)** — plan + rationale (plain-English layer).
 - **[docs/ANALYTICS.md](docs/ANALYTICS.md)** — the Mixpanel event catalog and the locked analytics contract.
